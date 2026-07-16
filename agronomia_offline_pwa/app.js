@@ -506,6 +506,8 @@ async function syncNow() {
       });
       const json = await readJsonResponse(res, "Sync error");
       const results = json.resultados || [];
+      const backendWarning = humanizeSyncError(json.aviso || "");
+      const backendDetail = String(json.detalhe || "").trim();
 
       for (const r of lote) {
         const found = results.find((x) => x.id_local === r.id_local);
@@ -515,7 +517,8 @@ async function syncNow() {
           r.sincronizado_em = new Date().toISOString();
         } else {
           r.status_sync = "erro";
-          r.erro = humanizeSyncError(found?.mensagem_erro || "Failed to send");
+          const baseError = humanizeSyncError(found?.mensagem_erro || backendWarning || "Failed to send");
+          r.erro = backendDetail ? `${baseError}: ${truncateText(backendDetail, 120)}` : baseError;
           totalErros += 1;
         }
         r.tentativas_envio = (r.tentativas_envio || 0) + 1;
