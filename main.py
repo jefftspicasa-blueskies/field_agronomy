@@ -152,58 +152,260 @@ def validar_registro(tipo_registro: str, dados: Dict[str, Any]) -> BaseModel:
     raise ValueError(f"Tipo de registro nao suportado: {tipo_registro}")
 
 
+def _sync_has_unique_id_local(conn) -> bool:
+    return bool(
+        conn.execute(
+            text(
+                """
+                SELECT COUNT(*) > 0
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_schema = 'trusted'
+                  AND tc.table_name = 'tb_sync_offline_agronomia'
+                  AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+                  AND kcu.column_name = 'id_local'
+                """
+            )
+        ).scalar()
+    )
+
+
+def _sync_id_has_default(conn) -> bool:
+    return bool(
+        conn.execute(
+            text(
+                """
+                SELECT column_default IS NOT NULL
+                FROM information_schema.columns
+                WHERE table_schema = 'trusted'
+                  AND table_name = 'tb_sync_offline_agronomia'
+                  AND column_name = 'id'
+                """
+            )
+        ).scalar()
+    )
+
+
+def _sync_next_id(conn) -> int:
+    conn.execute(text("LOCK TABLE trusted.tb_sync_offline_agronomia IN SHARE ROW EXCLUSIVE MODE"))
+    next_id = conn.execute(text("SELECT COALESCE(MAX(id), 0) + 1 FROM trusted.tb_sync_offline_agronomia")).scalar()
+    return int(next_id)
+
+
 def upsert_sync_sucesso(conn, payload: SyncLoteIn, reg: RegistroIn, payload_json: Dict[str, Any], id_servidor: Optional[int]):
-    conn.execute(
+    params = {
+        "id_local": reg.id_local,
+        "dispositivo_id": payload.dispositivo_id,
+        "usuario": payload.usuario,
+        "payload_json": json.dumps(payload_json, ensure_ascii=False),
+        "criado_em_local": reg.criado_em_local,
+        "id_servidor": id_servidor,
+    }
+
+    has_unique_id_local = conn.execute(
         text(
             """
-            INSERT INTO trusted.tb_sync_offline_agronomia
-            (id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, criado_em_local, recebido_em_servidor, sincronizado_em, id_servidor)
-            VALUES (:id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'enviado', 1, :criado_em_local, NOW(), NOW(), :id_servidor)
-            ON CONFLICT (id_local)
-            DO UPDATE SET
-              status_sync = EXCLUDED.status_sync,
-              tentativas = trusted.tb_sync_offline_agronomia.tentativas + 1,
-              sincronizado_em = NOW(),
-              id_servidor = EXCLUDED.id_servidor,
-              erro_ultima_tentativa = NULL,
-              payload_json = EXCLUDED.payload_json
+            SELECT COUNT(*) > 0
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'trusted'
+              AND tc.table_name = 'tb_sync_offline_agronomia'
+              AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+              AND kcu.column_name = 'id_local'
             """
-        ),
-        {
-            "id_local": reg.id_local,
-            "dispositivo_id": payload.dispositivo_id,
-            "usuario": payload.usuario,
-            "payload_json": json.dumps(payload_json, ensure_ascii=False),
-            "criado_em_local": reg.criado_em_local,
-            "id_servidor": id_servidor,
-        },
-    )
+        )
+    ).scalar()
+    id_has_default = _sync_id_has_default(conn)
+
+    if has_unique_id_local:
+        if id_has_default:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trusted.tb_sync_offline_agronomia
+                    (id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, criado_em_local, recebido_em_servidor, sincronizado_em, id_servidor)
+                    VALUES (:id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'enviado', 1, :criado_em_local, NOW(), NOW(), :id_servidor)
+                    ON CONFLICT (id_local)
+                    DO UPDATE SET
+                      status_sync = EXCLUDED.status_sync,
+                      tentativas = trusted.tb_sync_offline_agronomia.tentativas + 1,
+                      sincronizado_em = NOW(),
+                      id_servidor = EXCLUDED.id_servidor,
+                      erro_ultima_tentativa = NULL,
+                      payload_json = EXCLUDED.payload_json
+                    """
+                ),
+                params,
+            )
+        else:
+            sync_id = _sync_next_id(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trusted.tb_sync_offline_agronomia
+                    (id, id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, criado_em_local, recebido_em_servidor, sincronizado_em, id_servidor)
+                    VALUES (:id, :id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'enviado', 1, :criado_em_local, NOW(), NOW(), :id_servidor)
+                    ON CONFLICT (id_local)
+                    DO UPDATE SET
+                      status_sync = EXCLUDED.status_sync,
+                      tentativas = trusted.tb_sync_offline_agronomia.tentativas + 1,
+                      sincronizado_em = NOW(),
+                      id_servidor = EXCLUDED.id_servidor,
+                      erro_ultima_tentativa = NULL,
+                      payload_json = EXCLUDED.payload_json
+                    """
+                ),
+                {**params, "id": sync_id},
+            )
+    else:
+        updated = conn.execute(
+            text(
+                """
+                UPDATE trusted.tb_sync_offline_agronomia
+                SET status_sync = 'enviado',
+                    tentativas = COALESCE(tentativas, 0) + 1,
+                    sincronizado_em = NOW(),
+                    id_servidor = :id_servidor,
+                    erro_ultima_tentativa = NULL,
+                    payload_json = CAST(:payload_json AS jsonb),
+                    recebido_em_servidor = NOW()
+                WHERE id_local = :id_local
+                """
+            ),
+            params,
+        )
+        if updated.rowcount == 0:
+            if id_has_default:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO trusted.tb_sync_offline_agronomia
+                        (id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, criado_em_local, recebido_em_servidor, sincronizado_em, id_servidor)
+                        VALUES (:id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'enviado', 1, :criado_em_local, NOW(), NOW(), :id_servidor)
+                        """
+                    ),
+                    params,
+                )
+            else:
+                sync_id = _sync_next_id(conn)
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO trusted.tb_sync_offline_agronomia
+                        (id, id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, criado_em_local, recebido_em_servidor, sincronizado_em, id_servidor)
+                        VALUES (:id, :id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'enviado', 1, :criado_em_local, NOW(), NOW(), :id_servidor)
+                        """
+                    ),
+                    {**params, "id": sync_id},
+                )
 
 
 def upsert_sync_erro(conn, payload: SyncLoteIn, reg: RegistroIn, payload_json: Dict[str, Any], erro: str):
-    conn.execute(
+    params = {
+        "id_local": reg.id_local,
+        "dispositivo_id": payload.dispositivo_id,
+        "usuario": payload.usuario,
+        "payload_json": json.dumps(payload_json, ensure_ascii=False),
+        "erro": erro,
+        "criado_em_local": reg.criado_em_local,
+    }
+
+    has_unique_id_local = conn.execute(
         text(
             """
-            INSERT INTO trusted.tb_sync_offline_agronomia
-            (id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, erro_ultima_tentativa, criado_em_local, recebido_em_servidor)
-            VALUES (:id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'erro', 1, :erro, :criado_em_local, NOW())
-            ON CONFLICT (id_local)
-            DO UPDATE SET
-              status_sync = 'erro',
-              tentativas = trusted.tb_sync_offline_agronomia.tentativas + 1,
-              erro_ultima_tentativa = :erro,
-              payload_json = EXCLUDED.payload_json
+            SELECT COUNT(*) > 0
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON tc.constraint_name = kcu.constraint_name
+             AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_schema = 'trusted'
+              AND tc.table_name = 'tb_sync_offline_agronomia'
+              AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+              AND kcu.column_name = 'id_local'
             """
-        ),
-        {
-            "id_local": reg.id_local,
-            "dispositivo_id": payload.dispositivo_id,
-            "usuario": payload.usuario,
-            "payload_json": json.dumps(payload_json, ensure_ascii=False),
-            "erro": erro,
-            "criado_em_local": reg.criado_em_local,
-        },
-    )
+        )
+    ).scalar()
+    id_has_default = _sync_id_has_default(conn)
+
+    if has_unique_id_local:
+        if id_has_default:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trusted.tb_sync_offline_agronomia
+                    (id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, erro_ultima_tentativa, criado_em_local, recebido_em_servidor)
+                    VALUES (:id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'erro', 1, :erro, :criado_em_local, NOW())
+                    ON CONFLICT (id_local)
+                    DO UPDATE SET
+                      status_sync = 'erro',
+                      tentativas = trusted.tb_sync_offline_agronomia.tentativas + 1,
+                      erro_ultima_tentativa = :erro,
+                      payload_json = EXCLUDED.payload_json
+                    """
+                ),
+                params,
+            )
+        else:
+            sync_id = _sync_next_id(conn)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO trusted.tb_sync_offline_agronomia
+                    (id, id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, erro_ultima_tentativa, criado_em_local, recebido_em_servidor)
+                    VALUES (:id, :id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'erro', 1, :erro, :criado_em_local, NOW())
+                    ON CONFLICT (id_local)
+                    DO UPDATE SET
+                      status_sync = 'erro',
+                      tentativas = trusted.tb_sync_offline_agronomia.tentativas + 1,
+                      erro_ultima_tentativa = :erro,
+                      payload_json = EXCLUDED.payload_json
+                    """
+                ),
+                {**params, "id": sync_id},
+            )
+    else:
+        updated = conn.execute(
+            text(
+                """
+                UPDATE trusted.tb_sync_offline_agronomia
+                SET status_sync = 'erro',
+                    tentativas = COALESCE(tentativas, 0) + 1,
+                    erro_ultima_tentativa = :erro,
+                    payload_json = CAST(:payload_json AS jsonb),
+                    recebido_em_servidor = NOW()
+                WHERE id_local = :id_local
+                """
+            ),
+            params,
+        )
+        if updated.rowcount == 0:
+            if id_has_default:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO trusted.tb_sync_offline_agronomia
+                        (id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, erro_ultima_tentativa, criado_em_local, recebido_em_servidor)
+                        VALUES (:id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'erro', 1, :erro, :criado_em_local, NOW())
+                        """
+                    ),
+                    params,
+                )
+            else:
+                sync_id = _sync_next_id(conn)
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO trusted.tb_sync_offline_agronomia
+                        (id, id_local, dispositivo_id, usuario, payload_json, status_sync, tentativas, erro_ultima_tentativa, criado_em_local, recebido_em_servidor)
+                        VALUES (:id, :id_local, :dispositivo_id, :usuario, CAST(:payload_json AS jsonb), 'erro', 1, :erro, :criado_em_local, NOW())
+                        """
+                    ),
+                    {**params, "id": sync_id},
+                )
 
 
 def inserir_analise(conn, dados: AnaliseDados) -> int:
@@ -257,25 +459,57 @@ def inserir_inspecao(conn, dados: InspecaoDados) -> int:
 
 
 def inserir_ocorrencia(conn, dados: OcorrenciaDados) -> int:
-    inserted = conn.execute(
+    params = {
+        "tipo": dados.tipo,
+        "severidade": dados.severidade,
+        "fornecedor_id": dados.fornecedor_id,
+        "talhao": dados.talhao,
+        "data_hora": dados.data_hora,
+        "coordenadas": dados.coordenadas,
+        "descricao": dados.descricao,
+    }
+
+    id_has_default = conn.execute(
         text(
             """
-            INSERT INTO trusted.tb_ocorrencia_campo_agronomia
-            (tipo, severidade, fornecedor_id, talhao, data_hora, coordenadas, descricao)
-            VALUES (:tipo, :severidade, :fornecedor_id, :talhao, COALESCE(:data_hora, NOW()), :coordenadas, :descricao)
-            RETURNING id
+            SELECT column_default IS NOT NULL
+            FROM information_schema.columns
+            WHERE table_schema = 'trusted'
+              AND table_name = 'tb_ocorrencia_campo_agronomia'
+              AND column_name = 'id'
             """
-        ),
-        {
-            "tipo": dados.tipo,
-            "severidade": dados.severidade,
-            "fornecedor_id": dados.fornecedor_id,
-            "talhao": dados.talhao,
-            "data_hora": dados.data_hora,
-            "coordenadas": dados.coordenadas,
-            "descricao": dados.descricao,
-        },
+        )
     ).scalar()
+
+    if id_has_default:
+        inserted = conn.execute(
+            text(
+                """
+                INSERT INTO trusted.tb_ocorrencia_campo_agronomia
+                (tipo, severidade, fornecedor_id, talhao, data_hora, coordenadas, descricao)
+                VALUES (:tipo, :severidade, :fornecedor_id, :talhao, COALESCE(:data_hora, NOW()), :coordenadas, :descricao)
+                RETURNING id
+                """
+            ),
+            params,
+        ).scalar()
+    else:
+        conn.execute(text("LOCK TABLE trusted.tb_ocorrencia_campo_agronomia IN SHARE ROW EXCLUSIVE MODE"))
+        next_id = conn.execute(
+            text("SELECT COALESCE(MAX(id), 0) + 1 FROM trusted.tb_ocorrencia_campo_agronomia")
+        ).scalar()
+        inserted = conn.execute(
+            text(
+                """
+                INSERT INTO trusted.tb_ocorrencia_campo_agronomia
+                (id, tipo, severidade, fornecedor_id, talhao, data_hora, coordenadas, descricao)
+                VALUES (:id, :tipo, :severidade, :fornecedor_id, :talhao, COALESCE(:data_hora, NOW()), :coordenadas, :descricao)
+                RETURNING id
+                """
+            ),
+            {**params, "id": int(next_id)},
+        ).scalar()
+
     return int(inserted)
 
 
