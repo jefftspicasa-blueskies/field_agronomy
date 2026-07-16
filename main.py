@@ -368,72 +368,89 @@ def catalogo_fornecedores(
 
 @app.post("/api/agronomia/sync/lote")
 def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
+    if not payload.registros:
+        return {"resultados": [], "total": 0}
+
     resultados = []
 
-    with get_engine().begin() as conn:
-        for reg in payload.registros:
-            payload_json = {
-                "id_local": reg.id_local,
-                "tipo_registro": reg.tipo_registro,
-                "criado_em_local": reg.criado_em_local.isoformat() if reg.criado_em_local else None,
-                "dados": reg.dados,
-            }
+    try:
+        with get_engine().begin() as conn:
+            for reg in payload.registros:
+                payload_json = {
+                    "id_local": reg.id_local,
+                    "tipo_registro": reg.tipo_registro,
+                    "criado_em_local": reg.criado_em_local.isoformat() if reg.criado_em_local else None,
+                    "dados": reg.dados,
+                }
 
-            try:
-                existe = conn.execute(
-                    text(
-                        """
-                        SELECT id_servidor, status_sync
-                        FROM trusted.tb_sync_offline_agronomia
-                        WHERE id_local = :id_local
-                        LIMIT 1
-                        """
-                    ),
-                    {"id_local": reg.id_local},
-                ).fetchone()
+                try:
+                    existe = conn.execute(
+                        text(
+                            """
+                            SELECT id_servidor, status_sync
+                            FROM trusted.tb_sync_offline_agronomia
+                            WHERE id_local = :id_local
+                            LIMIT 1
+                            """
+                        ),
+                        {"id_local": reg.id_local},
+                    ).fetchone()
 
-                if existe and existe[1] == "enviado":
+                    if existe and existe[1] == "enviado":
+                        resultados.append(
+                            {
+                                "id_local": reg.id_local,
+                                "status": "enviado",
+                                "id_servidor": existe[0],
+                            }
+                        )
+                        continue
+
+                    dados_validos = validar_registro(reg.tipo_registro, reg.dados)
+
+                    id_servidor: Optional[int] = None
+                    if reg.tipo_registro == TIPO_ANALISE:
+                        id_servidor = inserir_analise(conn, dados_validos)
+                    elif reg.tipo_registro == TIPO_INSPECAO:
+                        id_servidor = inserir_inspecao(conn, dados_validos)
+                    elif reg.tipo_registro == TIPO_OCORRENCIA:
+                        id_servidor = inserir_ocorrencia(conn, dados_validos)
+
+                    upsert_sync_sucesso(conn, payload, reg, payload_json, id_servidor)
+
                     resultados.append(
                         {
                             "id_local": reg.id_local,
+                            "tipo_registro": reg.tipo_registro,
                             "status": "enviado",
-                            "id_servidor": existe[0],
+                            "id_servidor": id_servidor,
                         }
                     )
-                    continue
 
-                dados_validos = validar_registro(reg.tipo_registro, reg.dados)
-
-                id_servidor: Optional[int] = None
-                if reg.tipo_registro == TIPO_ANALISE:
-                    id_servidor = inserir_analise(conn, dados_validos)
-                elif reg.tipo_registro == TIPO_INSPECAO:
-                    id_servidor = inserir_inspecao(conn, dados_validos)
-                elif reg.tipo_registro == TIPO_OCORRENCIA:
-                    id_servidor = inserir_ocorrencia(conn, dados_validos)
-
-                upsert_sync_sucesso(conn, payload, reg, payload_json, id_servidor)
-
-                resultados.append(
-                    {
-                        "id_local": reg.id_local,
-                        "tipo_registro": reg.tipo_registro,
-                        "status": "enviado",
-                        "id_servidor": id_servidor,
-                    }
-                )
-
-            except Exception as exc:
-                erro_completo = str(exc)
-                upsert_sync_erro(conn, payload, reg, payload_json, erro_completo)
-                resultados.append(
-                    {
-                        "id_local": reg.id_local,
-                        "tipo_registro": reg.tipo_registro,
-                        "status": "erro",
-                        "mensagem_erro": erro_cliente_seguro(exc),
-                    }
-                )
+                except Exception as exc:
+                    erro_completo = str(exc)
+                    upsert_sync_erro(conn, payload, reg, payload_json, erro_completo)
+                    resultados.append(
+                        {
+                            "id_local": reg.id_local,
+                            "tipo_registro": reg.tipo_registro,
+                            "status": "erro",
+                            "mensagem_erro": erro_cliente_seguro(exc),
+                        }
+                    )
+    except Exception:
+        return {
+            "resultados": [
+                {
+                    "id_local": reg.id_local,
+                    "tipo_registro": reg.tipo_registro,
+                    "status": "erro",
+                    "mensagem_erro": "servico_indisponivel",
+                }
+                for reg in payload.registros
+            ],
+            "aviso": "banco_indisponivel",
+        }
 
     return {"resultados": resultados}
 
