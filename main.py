@@ -285,9 +285,11 @@ def health():
 def catalogo_fornecedores(
     termo: Optional[str] = Query(default=None, min_length=1),
     limite: int = Query(default=1000, ge=1, le=5000),
+    debug: bool = Query(default=False),
     _auth=Depends(require_sync_api_key),
 ):
     like = f"%{termo}%" if termo else None
+    erros_debug: List[str] = []
 
     tabelas_catalogo = [
         "trusted.fornecedores_agronomia",
@@ -361,8 +363,12 @@ def catalogo_fornecedores(
                 try:
                     out = _consultar_tabela(conn, tabela, _colunas_da_tabela(conn, tabela))
                     if out is not None:
+                        if debug:
+                            out["fonte"] = tabela
                         return out
-                except Exception:
+                except Exception as exc:
+                    if debug:
+                        erros_debug.append(f"{tabela}: {str(exc)[:180]}")
                     continue
 
             candidatos = conn.execute(
@@ -386,13 +392,30 @@ def catalogo_fornecedores(
                 try:
                     out = _consultar_tabela(conn, tabela, cols)
                     if out is not None:
-                        out["fonte"] = tabela
+                        if debug:
+                            out["fonte"] = tabela
                         return out
-                except Exception:
+                except Exception as exc:
+                    if debug:
+                        erros_debug.append(f"{tabela}: {str(exc)[:180]}")
                     continue
     except Exception:
+        if debug:
+            return {
+                "registros": [],
+                "total": 0,
+                "aviso": "catalogo_indisponivel",
+                "debug": {"erros": erros_debug},
+            }
         return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
 
+    if debug:
+        return {
+            "registros": [],
+            "total": 0,
+            "aviso": "catalogo_indisponivel",
+            "debug": {"erros": erros_debug},
+        }
     return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
 
 
