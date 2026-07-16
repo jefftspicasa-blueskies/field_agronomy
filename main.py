@@ -299,15 +299,45 @@ def catalogo_fornecedores(
     def _nome_tabela_seguro(nome: str) -> bool:
         return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*", nome))
 
+    def _colunas_da_tabela(conn, tabela: str) -> set:
+        if not _nome_tabela_seguro(tabela):
+            return set()
+        schema, nome = tabela.split(".", 1)
+        rows = conn.execute(
+            text(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = :schema
+                  AND table_name = :nome
+                """
+            ),
+            {"schema": schema, "nome": nome},
+        ).fetchall()
+        return {r[0] for r in rows}
+
     def _consultar_tabela(conn, tabela: str, colunas: Optional[set] = None):
         if not _nome_tabela_seguro(tabela):
             return None
 
         colunas = colunas or set()
-        select_campos = ["id", "nome"]
+        col_id = next((c for c in ("id", "id_fornecedor", "fornecedor_id") if c in colunas), None)
+        col_nome = next((c for c in ("nome", "nome_fornecedor", "fornecedor", "razao_social") if c in colunas), None)
+        col_cnpj = next((c for c in ("cnpj", "cpf_cnpj") if c in colunas), None)
+        col_cidade = next((c for c in ("cidade", "municipio") if c in colunas), None)
+        col_uf = next((c for c in ("uf", "estado") if c in colunas), None)
+
+        if not col_id or not col_nome:
+            return None
+
+        select_campos = [f"{col_id} AS id", f"{col_nome} AS nome"]
         for campo in ("cnpj", "cidade", "uf"):
-            if campo in colunas:
-                select_campos.append(campo)
+            if campo == "cnpj" and col_cnpj:
+                select_campos.append(f"{col_cnpj}::text AS cnpj")
+            elif campo == "cidade" and col_cidade:
+                select_campos.append(f"{col_cidade}::text AS cidade")
+            elif campo == "uf" and col_uf:
+                select_campos.append(f"{col_uf}::text AS uf")
             else:
                 select_campos.append(f"NULL::text AS {campo}")
 
@@ -316,7 +346,7 @@ def catalogo_fornecedores(
                 f"""
                 SELECT {", ".join(select_campos)}
                 FROM {tabela}
-                WHERE (:like IS NULL OR nome ILIKE :like OR COALESCE(cnpj::text, '') ILIKE :like)
+                WHERE (:like IS NULL OR {col_nome} ILIKE :like OR COALESCE({col_cnpj if col_cnpj else "NULL"}::text, '') ILIKE :like)
                 ORDER BY nome
                 LIMIT :limite
                 """
@@ -329,7 +359,7 @@ def catalogo_fornecedores(
         with get_engine().begin() as conn:
             for tabela in tabelas_catalogo:
                 try:
-                    out = _consultar_tabela(conn, tabela, {"cnpj", "cidade", "uf"})
+                    out = _consultar_tabela(conn, tabela, _colunas_da_tabela(conn, tabela))
                     if out is not None:
                         return out
                 except Exception:
