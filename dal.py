@@ -11,7 +11,12 @@ def _normalize_db_url(url: str) -> str:
     """Normaliza URLs legadas do Postgres para formato aceito pelo SQLAlchemy."""
     raw = (url or "").strip()
     if raw.startswith("postgres://"):
-        return raw.replace("postgres://", "postgresql://", 1)
+        raw = raw.replace("postgres://", "postgresql://", 1)
+
+    # Forca o driver psycopg v3 quando o esquema nao explicita driver.
+    if raw.startswith("postgresql://"):
+        return raw.replace("postgresql://", "postgresql+psycopg://", 1)
+
     return raw
 
 
