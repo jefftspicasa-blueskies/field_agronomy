@@ -121,6 +121,26 @@ function truncateText(value, maxLen = 34) {
   return `${text.slice(0, maxLen - 1)}…`;
 }
 
+function humanizeSyncError(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "Unknown synchronization error";
+
+  const normalized = raw.toLowerCase();
+  const byCode = {
+    servico_indisponivel: "Service unavailable",
+    banco_indisponivel: "Database unavailable",
+    catalogo_indisponivel: "Catalog unavailable",
+    dados_invalidos: "Invalid data",
+    dados_obrigatorios_ausentes: "Missing required data",
+    referencia_invalida: "Invalid reference",
+    falha_no_processamento: "Processing failure",
+    nao_autorizado: "Unauthorized",
+  };
+
+  if (byCode[normalized]) return byCode[normalized];
+  return raw;
+}
+
 function getApiUrl() {
   return localStorage.getItem("bs_api_url") || DEFAULT_API_URL;
 }
@@ -495,7 +515,7 @@ async function syncNow() {
           r.sincronizado_em = new Date().toISOString();
         } else {
           r.status_sync = "erro";
-          r.erro = found?.mensagem_erro || "Failed to send";
+          r.erro = humanizeSyncError(found?.mensagem_erro || "Failed to send");
           totalErros += 1;
         }
         r.tentativas_envio = (r.tentativas_envio || 0) + 1;
@@ -505,7 +525,7 @@ async function syncNow() {
       totalErros += lote.length;
       for (const r of lote) {
         r.status_sync = "erro";
-        r.erro = String(err);
+        r.erro = humanizeSyncError(String(err));
         r.tentativas_envio = (r.tentativas_envio || 0) + 1;
         await putQueueRecord(r);
       }
@@ -515,7 +535,7 @@ async function syncNow() {
   localStorage.setItem("bs_last_sync", new Date().toISOString());
   updateLastSyncUi();
   if (totalErros) {
-    feedback(`Synchronization finished with ${totalErros} error(s).`, true);
+    feedback(`Sync finished with ${totalErros} error(s). Records remain saved offline in the queue.`, true);
   } else {
     feedback("Synchronization finished.");
   }
