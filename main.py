@@ -288,7 +288,8 @@ def catalogo_fornecedores(
     debug: bool = Query(default=False),
     _auth=Depends(require_sync_api_key),
 ):
-    like = f"%{termo}%" if termo else None
+    like = f"%{termo}%" if termo else ""
+    aplicar_filtro = bool(termo)
     erros_debug: List[str] = []
     meta_debug: Dict[str, Any] = {}
 
@@ -340,12 +341,12 @@ def catalogo_fornecedores(
                     f"""
                     SELECT {", ".join(select_campos)}
                     FROM {tabela}
-                    WHERE (:like IS NULL OR {col_nome} ILIKE :like OR COALESCE({col_cnpj if col_cnpj else "NULL"}::text, '') ILIKE :like)
+                    WHERE (:aplicar_filtro = FALSE OR {col_nome} ILIKE :like OR COALESCE({col_cnpj if col_cnpj else "NULL"}::text, '') ILIKE :like)
                     ORDER BY nome
                     LIMIT :limite
                     """
                 ),
-                {"like": like, "limite": limite},
+                {"like": like, "limite": limite, "aplicar_filtro": aplicar_filtro},
             ).mappings().all()
             return {"registros": [dict(r) for r in rows], "total": len(rows)}
 
