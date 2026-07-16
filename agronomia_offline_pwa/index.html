@@ -1,54 +1,54 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-US">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0B5FA5" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./styles.css?v=10" />
-  <title>Blue Skies Campo Offline</title>
+  <link rel="stylesheet" href="./styles.css?v=11" />
+  <title>Blue Skies Field Offline</title>
 </head>
 <body>
   <div id="globalFeedback" class="global-feedback" role="status" aria-live="polite"></div>
   <header class="topbar">
     <img src="https://fresh.blueskies.com/wp-content/uploads/2017/06/retina-01-300x300.png" alt="Blue Skies" />
     <div class="topbar-title">
-      <h1>Agronomia de Campo Offline</h1>
-      <p>Modulo completo para coleta em campo com sincronizacao posterior</p>
+      <h1>Offline Field Agronomy</h1>
+      <p>Complete module for field data collection with later synchronization</p>
     </div>
     <div class="topbar-status">
-      <span id="netStatus" class="chip">Verificando conexao...</span>
-      <span id="lastSync" class="chip">Ultimo sync: -</span>
+      <span id="netStatus" class="chip">Checking connection...</span>
+      <span id="lastSync" class="chip">Last sync: -</span>
     </div>
   </header>
 
   <main class="container">
     <section id="view-home" class="view active">
       <section class="card hero">
-        <h2>Menu inicial</h2>
-        <p>Escolha um modulo para cadastrar, pesquisar e gerenciar dados locais mesmo sem internet.</p>
+        <h2>Home menu</h2>
+        <p>Choose a module to create, search, and manage local data even without internet.</p>
       </section>
       <section class="menu-grid">
         <button class="menu-card" data-view="view-fornecedores" type="button">
-          <strong>Fornecedores</strong>
-          <span>Cadastro e pesquisa</span>
+          <strong>Suppliers</strong>
+          <span>Register and search</span>
         </button>
         <button class="menu-card" data-view="view-analises" type="button">
-          <strong>Analises</strong>
-          <span>Historico, criar, editar e excluir</span>
+          <strong>Analyses</strong>
+          <span>History, create, edit, and delete</span>
         </button>
         <button class="menu-card" data-view="view-inspecoes" type="button">
-          <strong>Inspecoes</strong>
-          <span>Historico, criar, editar e excluir</span>
+          <strong>Inspections</strong>
+          <span>History, create, edit, and delete</span>
         </button>
         <button class="menu-card" data-view="view-ocorrencias" type="button">
-          <strong>Ocorrencias</strong>
-          <span>Historico, criar, editar e excluir</span>
+          <strong>Occurrences</strong>
+          <span>History, create, edit, and delete</span>
         </button>
         <button class="menu-card" data-view="view-sync" type="button">
-          <strong>Sincronizacao</strong>
-          <span>Configurar API e enviar fila</span>
+          <strong>Synchronization</strong>
+          <span>Configure API and send queue</span>
         </button>
       </section>
     </section>
@@ -56,23 +56,23 @@
     <section id="view-fornecedores" class="view">
       <section class="card">
         <div class="section-head">
-          <h2>Fornecedores</h2>
-          <button class="ghost" data-back-home type="button">Voltar ao menu</button>
+          <h2>Suppliers</h2>
+          <button class="ghost" data-back-home type="button">Back to menu</button>
         </div>
         <div class="toolbar">
-          <input id="fornecedorBusca" type="search" placeholder="Pesquisar por nome, id ou CNPJ" />
-          <button id="fornecedorNovo" type="button">Novo</button>
-          <button id="refreshFornecedores" type="button">Atualizar da API</button>
+          <input id="fornecedorBusca" type="search" placeholder="Search by name, ID, or tax number" />
+          <button id="fornecedorNovo" type="button">New</button>
+          <button id="refreshFornecedores" type="button">Refresh from API</button>
         </div>
         <div class="table-wrap">
           <table class="fornecedores-table">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Nome</th>
-                <th>CNPJ</th>
-                <th>Cidade/UF</th>
-                <th>Acoes</th>
+                <th>Name</th>
+                <th>Tax ID</th>
+                <th>City/State</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="fornecedoresBody"></tbody>
@@ -84,29 +84,29 @@
     <section id="view-fornecedor-form" class="view">
       <section class="card">
         <div class="section-head">
-          <h2 id="fornecedorFormTitle">Cadastrar fornecedor</h2>
-          <button class="ghost" id="fornecedorVoltarLista" type="button">Voltar para lista</button>
+          <h2 id="fornecedorFormTitle">Create supplier</h2>
+          <button class="ghost" id="fornecedorVoltarLista" type="button">Back to list</button>
         </div>
         <form id="fornecedorForm" class="form-grid compact">
           <input id="fornecedorEditId" type="hidden" />
           <label>ID
             <input id="fornecedorId" type="number" min="1" required />
           </label>
-          <label>Nome
+          <label>Name
             <input id="fornecedorNome" type="text" maxlength="160" required />
           </label>
           <label>CNPJ
             <input id="fornecedorCnpj" type="text" maxlength="30" />
           </label>
-          <label>Cidade
+          <label>City
             <input id="fornecedorCidade" type="text" maxlength="80" />
           </label>
           <label>UF
             <input id="fornecedorUf" type="text" maxlength="2" />
           </label>
           <div class="actions full">
-            <button type="submit">Salvar fornecedor</button>
-            <button id="fornecedorCancelar" type="button" class="ghost">Limpar</button>
+            <button type="submit">Save supplier</button>
+            <button id="fornecedorCancelar" type="button" class="ghost">Clear</button>
           </div>
         </form>
       </section>
@@ -115,23 +115,23 @@
     <section id="view-analises" class="view">
       <section class="card">
         <div class="section-head">
-          <h2>Analises</h2>
-          <button class="ghost" data-back-home type="button">Voltar ao menu</button>
+          <h2>Analyses</h2>
+          <button class="ghost" data-back-home type="button">Back to menu</button>
         </div>
         <div class="toolbar">
-          <input id="analiseBusca" type="search" placeholder="Pesquisar por fornecedor, talhao, variedade ou status" />
-          <button id="analiseNovo" type="button">Nova analise</button>
+          <input id="analiseBusca" type="search" placeholder="Search by supplier, plot, variety, or status" />
+          <button id="analiseNovo" type="button">New analysis</button>
         </div>
         <div class="table-wrap">
           <table class="analises-table">
             <thead>
               <tr>
-                <th>Data</th>
-                <th>Fornecedor</th>
-                <th class="col-optional">Talhao</th>
-                <th class="col-optional">Variedade</th>
+                <th>Date</th>
+                <th>Supplier</th>
+                <th class="col-optional">Plot</th>
+                <th class="col-optional">Variety</th>
                 <th>Status</th>
-                <th>Acoes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="analisesBody"></tbody>
@@ -143,27 +143,27 @@
     <section id="view-analise-form" class="view">
       <section class="card">
         <div class="section-head">
-          <h2 id="analiseFormTitle">Nova analise</h2>
-          <button class="ghost" id="analiseVoltarLista" type="button">Voltar para lista</button>
+          <h2 id="analiseFormTitle">New analysis</h2>
+          <button class="ghost" id="analiseVoltarLista" type="button">Back to list</button>
         </div>
         <form id="coletaForm" class="form-grid">
           <input id="analiseEditId" type="hidden" />
-          <label>Fornecedor
+          <label>Supplier
             <select name="fornecedor_id" data-fornecedor-select required></select>
           </label>
-          <label>Talhao
-            <input type="text" name="talhao" maxlength="80" placeholder="Ex: T-07" required />
+          <label>Plot
+            <input type="text" name="talhao" maxlength="80" placeholder="e.g.: T-07" required />
           </label>
-          <label>Variedade
-            <input type="text" name="variedade" maxlength="80" placeholder="Ex: Palmer" required />
+          <label>Variety
+            <input type="text" name="variedade" maxlength="80" placeholder="e.g.: Palmer" required />
           </label>
-          <label>Data da analise
+          <label>Analysis date
             <input type="date" name="data_analise" required />
           </label>
-          <label>Maturacao (1-5)
+          <label>Ripeness (1-5)
             <input type="number" name="maturacao" min="1" max="5" step="1" value="3" />
           </label>
-          <label>Materia seca (%)
+          <label>Dry matter (%)
             <input type="number" name="materia_seca" min="0" max="30" step="0.01" required />
           </label>
           <label>Brix
@@ -172,41 +172,41 @@
           <label>pH
             <input type="number" name="ph" min="0" max="14" step="0.01" />
           </label>
-          <label>Peso medio fruta (g)
+          <label>Average fruit weight (g)
             <input type="number" name="peso_pu" min="0" step="0.0001" readonly required />
           </label>
-          <label>Qtd frutos analisados
+          <label>Fruit count analyzed
             <input type="number" name="numero_frutos_analisados" min="30" max="30" step="1" value="30" readonly required />
           </label>
-          <label>Defeitos leves
+          <label>Minor defects
             <input type="number" name="defeitos_leves" min="0" step="1" value="0" />
           </label>
-          <label>Defeitos criticos
+          <label>Critical defects
             <input type="number" name="defeitos_criticos" min="0" step="1" value="0" />
           </label>
           <div class="full amostras-box">
             <div class="amostras-head">
-              <strong>Pesos das 30 amostras</strong>
-              <span id="amostrasResumo">0/30 preenchidas</span>
+              <strong>Weights for 30 samples</strong>
+              <span id="amostrasResumo">0/30 filled</span>
             </div>
-            <div id="amostrasPesos" class="amostras-grid" aria-label="Pesos das amostras"></div>
+            <div id="amostrasPesos" class="amostras-grid" aria-label="Sample weights"></div>
           </div>
-          <label class="full">Imagens da coleta (minimo 5)
+          <label class="full">Collection images (optional)
             <input id="coletaImagens" type="file" accept="image/*" capture="environment" multiple />
-            <small id="imagensResumo">Nenhuma imagem selecionada.</small>
+            <small id="imagensResumo">No images selected.</small>
           </label>
-          <label class="full">Observacoes
-            <textarea name="observacoes" rows="3" maxlength="1200" placeholder="Anotacoes de campo"></textarea>
+          <label class="full">Notes
+            <textarea name="observacoes" rows="3" maxlength="1200" placeholder="Field notes"></textarea>
           </label>
-          <label>Dispositivo ID
+          <label>Device ID
             <input type="text" name="dispositivo_id" data-device-id readonly required />
           </label>
-          <label>Usuario
+          <label>User
             <input type="text" name="usuario" data-usuario required />
           </label>
           <div class="actions full">
-            <button type="submit">Salvar analise</button>
-            <button id="analiseCancelar" class="ghost" type="button">Cancelar edicao</button>
+            <button type="submit">Save analysis</button>
+            <button id="analiseCancelar" class="ghost" type="button">Cancel edit</button>
           </div>
         </form>
       </section>
@@ -215,23 +215,23 @@
     <section id="view-inspecoes" class="view">
       <section class="card">
         <div class="section-head">
-          <h2>Inspecoes</h2>
-          <button class="ghost" data-back-home type="button">Voltar ao menu</button>
+          <h2>Inspections</h2>
+          <button class="ghost" data-back-home type="button">Back to menu</button>
         </div>
         <div class="toolbar">
-          <input id="inspecaoBusca" type="search" placeholder="Pesquisar por fornecedor, talhao, estagio ou status" />
-          <button id="inspecaoNovo" type="button">Nova inspecao</button>
+          <input id="inspecaoBusca" type="search" placeholder="Search by supplier, plot, stage, or status" />
+          <button id="inspecaoNovo" type="button">New inspection</button>
         </div>
         <div class="table-wrap">
           <table class="inspecoes-table">
             <thead>
               <tr>
-                <th>Data</th>
-                <th>Fornecedor</th>
-                <th>Talhao</th>
-                <th>Estagio</th>
+                <th>Date</th>
+                <th>Supplier</th>
+                <th>Plot</th>
+                <th>Stage</th>
                 <th>Status</th>
-                <th>Acoes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="inspecoesBody"></tbody>
@@ -243,59 +243,59 @@
     <section id="view-inspecao-form" class="view">
       <section class="card">
         <div class="section-head">
-          <h2 id="inspecaoFormTitle">Nova inspecao</h2>
-          <button class="ghost" id="inspecaoVoltarLista" type="button">Voltar para lista</button>
+          <h2 id="inspecaoFormTitle">New inspection</h2>
+          <button class="ghost" id="inspecaoVoltarLista" type="button">Back to list</button>
         </div>
         <form id="inspecaoForm" class="form-grid">
           <input id="inspecaoEditId" type="hidden" />
-          <label>Fornecedor
+          <label>Supplier
             <select name="fornecedor_id" data-fornecedor-select required></select>
           </label>
-          <label>Talhao
+          <label>Plot
             <input type="text" name="talhao" maxlength="80" required />
           </label>
-          <label>Estagio fenologico
+          <label>Phenological stage
             <input type="text" name="estagio_fenologico" maxlength="80" required />
           </label>
-          <label>Data da inspecao
+          <label>Inspection date
             <input type="date" name="data_inspecao" required />
           </label>
-          <label>Pragas
+          <label>Pests
             <input type="text" name="pragas" maxlength="240" />
           </label>
-          <label>Doencas
+          <label>Diseases
             <input type="text" name="doencas" maxlength="240" />
           </label>
-          <label>Irrigacao (0-5)
+          <label>Irrigation (0-5)
             <input type="number" name="irrigacao_escala" min="0" max="5" step="1" value="3" />
           </label>
-          <label>Adubacao (0-5)
+          <label>Fertilization (0-5)
             <input type="number" name="adubacao_escala" min="0" max="5" step="1" value="3" />
           </label>
-          <label>Clima
+          <label>Weather
             <select name="clima">
-              <option value="Ensolarado">Ensolarado</option>
-              <option value="Nublado">Nublado</option>
-              <option value="Chuva leve">Chuva leve</option>
-              <option value="Chuva forte">Chuva forte</option>
-              <option value="Vento forte">Vento forte</option>
+              <option value="Sunny">Sunny</option>
+              <option value="Cloudy">Cloudy</option>
+              <option value="Light rain">Light rain</option>
+              <option value="Heavy rain">Heavy rain</option>
+              <option value="Strong wind">Strong wind</option>
             </select>
           </label>
-          <label>Acao recomendada
+          <label>Recommended action
             <input type="text" name="acao_recomendada" maxlength="240" />
           </label>
-          <label class="full">Observacoes
+          <label class="full">Notes
             <textarea name="observacoes" rows="3" maxlength="1200"></textarea>
           </label>
-          <label>Dispositivo ID
+          <label>Device ID
             <input type="text" name="dispositivo_id" data-device-id readonly required />
           </label>
-          <label>Usuario
+          <label>User
             <input type="text" name="usuario" data-usuario required />
           </label>
           <div class="actions full">
-            <button type="submit">Salvar inspecao</button>
-            <button id="inspecaoCancelar" class="ghost" type="button">Cancelar edicao</button>
+            <button type="submit">Save inspection</button>
+            <button id="inspecaoCancelar" class="ghost" type="button">Cancel edit</button>
           </div>
         </form>
       </section>
@@ -304,23 +304,23 @@
     <section id="view-ocorrencias" class="view">
       <section class="card">
         <div class="section-head">
-          <h2>Ocorrencias</h2>
-          <button class="ghost" data-back-home type="button">Voltar ao menu</button>
+          <h2>Occurrences</h2>
+          <button class="ghost" data-back-home type="button">Back to menu</button>
         </div>
         <div class="toolbar">
-          <input id="ocorrenciaBusca" type="search" placeholder="Pesquisar por tipo, severidade, fornecedor ou status" />
-          <button id="ocorrenciaNovo" type="button">Nova ocorrencia</button>
+          <input id="ocorrenciaBusca" type="search" placeholder="Search by type, severity, supplier, or status" />
+          <button id="ocorrenciaNovo" type="button">New occurrence</button>
         </div>
         <div class="table-wrap">
           <table class="ocorrencias-table">
             <thead>
               <tr>
-                <th>Data/hora</th>
-                <th>Tipo</th>
-                <th>Severidade</th>
-                <th>Fornecedor</th>
+                <th>Date/time</th>
+                <th>Type</th>
+                <th>Severity</th>
+                <th>Supplier</th>
                 <th>Status</th>
-                <th>Acoes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="ocorrenciasBody"></tbody>
@@ -332,52 +332,52 @@
     <section id="view-ocorrencia-form" class="view">
       <section class="card">
         <div class="section-head">
-          <h2 id="ocorrenciaFormTitle">Nova ocorrencia</h2>
-          <button class="ghost" id="ocorrenciaVoltarLista" type="button">Voltar para lista</button>
+          <h2 id="ocorrenciaFormTitle">New occurrence</h2>
+          <button class="ghost" id="ocorrenciaVoltarLista" type="button">Back to list</button>
         </div>
         <form id="ocorrenciaForm" class="form-grid">
           <input id="ocorrenciaEditId" type="hidden" />
-          <label>Tipo
+          <label>Type
             <select name="tipo" required>
-              <option value="Praga">Praga</option>
-              <option value="Doenca">Doenca</option>
-              <option value="Clima">Clima</option>
-              <option value="Operacional">Operacional</option>
-              <option value="Outro">Outro</option>
+              <option value="Pest">Pest</option>
+              <option value="Disease">Disease</option>
+              <option value="Weather">Weather</option>
+              <option value="Operational">Operational</option>
+              <option value="Other">Other</option>
             </select>
           </label>
-          <label>Severidade
+          <label>Severity
             <select name="severidade" required>
-              <option value="Baixa">Baixa</option>
-              <option value="Media">Media</option>
-              <option value="Alta">Alta</option>
-              <option value="Critica">Critica</option>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
             </select>
           </label>
-          <label>Fornecedor
+          <label>Supplier
             <select name="fornecedor_id" data-fornecedor-select required></select>
           </label>
-          <label>Talhao
+          <label>Plot
             <input type="text" name="talhao" maxlength="80" />
           </label>
-          <label>Data e hora
+          <label>Date and time
             <input type="datetime-local" name="data_hora" required />
           </label>
-          <label>Coordenadas (lat,long)
+          <label>Coordinates (lat,long)
             <input type="text" name="coordenadas" maxlength="80" placeholder="-9.12345,-40.54321" />
           </label>
-          <label class="full">Descricao
+          <label class="full">Description
             <textarea name="descricao" rows="4" maxlength="1200" required></textarea>
           </label>
-          <label>Dispositivo ID
+          <label>Device ID
             <input type="text" name="dispositivo_id" data-device-id readonly required />
           </label>
-          <label>Usuario
+          <label>User
             <input type="text" name="usuario" data-usuario required />
           </label>
           <div class="actions full">
-            <button type="submit">Salvar ocorrencia</button>
-            <button id="ocorrenciaCancelar" class="ghost" type="button">Cancelar edicao</button>
+            <button type="submit">Save occurrence</button>
+            <button id="ocorrenciaCancelar" class="ghost" type="button">Cancel edit</button>
           </div>
         </form>
       </section>
@@ -386,24 +386,24 @@
     <section id="view-sync" class="view">
       <section class="card">
         <div class="section-head">
-          <h2>Sincronizacao</h2>
-          <button class="ghost" data-back-home type="button">Voltar ao menu</button>
+          <h2>Synchronization</h2>
+          <button class="ghost" data-back-home type="button">Back to menu</button>
         </div>
         <div class="form-grid compact">
-          <label class="full">URL da API de sincronizacao
-            <input type="url" id="apiUrl" placeholder="https://seu-endpoint/api/agronomia/sync/lote" />
+          <label class="full">Synchronization API URL
+            <input type="url" id="apiUrl" placeholder="https://your-endpoint/api/agronomia/sync/lote" />
           </label>
-          <label class="full">Token da API (opcional)
-            <input type="password" id="apiKey" placeholder="Token para header X-API-Key / Bearer" autocomplete="off" />
+          <label class="full">API token (optional)
+            <input type="password" id="apiKey" placeholder="Token for X-API-Key / Bearer header" autocomplete="off" />
           </label>
           <div class="actions full">
-            <button type="button" id="saveApiUrl">Salvar URL API</button>
-            <button type="button" id="syncNow">Sincronizar agora</button>
-            <button type="button" id="clearEnviados" class="danger">Limpar enviados</button>
+            <button type="button" id="saveApiUrl">Save API URL</button>
+            <button type="button" id="syncNow">Sync now</button>
+            <button type="button" id="clearEnviados" class="danger">Clear sent</button>
           </div>
           <div class="actions full">
-            <button type="button" id="exportQueue">Exportar fila (JSON)</button>
-            <label class="btn-file" for="importQueueFile">Importar fila (JSON)</label>
+            <button type="button" id="exportQueue">Export queue (JSON)</button>
+            <label class="btn-file" for="importQueueFile">Import queue (JSON)</label>
             <input id="importQueueFile" type="file" accept="application/json" />
           </div>
         </div>
@@ -411,21 +411,21 @@
       </section>
 
       <section class="card">
-        <h3>Fila geral</h3>
+        <h3>Overall queue</h3>
         <div class="kpis">
-          <span id="kpiPendentes">Pendentes: 0</span>
-          <span id="kpiErros">Erros: 0</span>
-          <span id="kpiEnviados">Enviados: 0</span>
+          <span id="kpiPendentes">Pending: 0</span>
+          <span id="kpiErros">Errors: 0</span>
+          <span id="kpiEnviados">Sent: 0</span>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>ID local</th>
-                <th>Tipo</th>
+                <th>Local ID</th>
+                <th>Type</th>
                 <th>Status</th>
-                <th>Tentativas</th>
-                <th>Erro</th>
+                <th>Attempts</th>
+                <th>Error</th>
               </tr>
             </thead>
             <tbody id="queueBody"></tbody>
@@ -435,6 +435,6 @@
     </section>
   </main>
 
-  <script type="module" src="./app.js?v=10"></script>
+  <script type="module" src="./app.js?v=11"></script>
 </body>
 </html>
