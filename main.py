@@ -290,6 +290,7 @@ def catalogo_fornecedores(
 ):
     like = f"%{termo}%" if termo else None
     erros_debug: List[str] = []
+    meta_debug: Dict[str, Any] = {}
 
     tabelas_catalogo = [
         "trusted.fornecedores_agronomia",
@@ -322,6 +323,32 @@ def catalogo_fornecedores(
         if not _nome_tabela_seguro(tabela):
             return None
 
+        def _executar(col_id: str, col_nome: str, col_cnpj: Optional[str], col_cidade: Optional[str], col_uf: Optional[str]):
+            select_campos = [f"{col_id} AS id", f"{col_nome} AS nome"]
+            for campo in ("cnpj", "cidade", "uf"):
+                if campo == "cnpj" and col_cnpj:
+                    select_campos.append(f"{col_cnpj}::text AS cnpj")
+                elif campo == "cidade" and col_cidade:
+                    select_campos.append(f"{col_cidade}::text AS cidade")
+                elif campo == "uf" and col_uf:
+                    select_campos.append(f"{col_uf}::text AS uf")
+                else:
+                    select_campos.append(f"NULL::text AS {campo}")
+
+            rows = conn.execute(
+                text(
+                    f"""
+                    SELECT {", ".join(select_campos)}
+                    FROM {tabela}
+                    WHERE (:like IS NULL OR {col_nome} ILIKE :like OR COALESCE({col_cnpj if col_cnpj else "NULL"}::text, '') ILIKE :like)
+                    ORDER BY nome
+                    LIMIT :limite
+                    """
+                ),
+                {"like": like, "limite": limite},
+            ).mappings().all()
+            return {"registros": [dict(r) for r in rows], "total": len(rows)}
+
         colunas = colunas or set()
         col_id = next((c for c in ("id", "id_fornecedor", "fornecedor_id") if c in colunas), None)
         col_nome = next((c for c in ("nome", "nome_fornecedor", "fornecedor", "razao_social") if c in colunas), None)
@@ -329,42 +356,29 @@ def catalogo_fornecedores(
         col_cidade = next((c for c in ("cidade", "municipio") if c in colunas), None)
         col_uf = next((c for c in ("uf", "estado") if c in colunas), None)
 
-        if not col_id or not col_nome:
-            return None
+        if col_id and col_nome:
+            return _executar(col_id, col_nome, col_cnpj, col_cidade, col_uf)
 
-        select_campos = [f"{col_id} AS id", f"{col_nome} AS nome"]
-        for campo in ("cnpj", "cidade", "uf"):
-            if campo == "cnpj" and col_cnpj:
-                select_campos.append(f"{col_cnpj}::text AS cnpj")
-            elif campo == "cidade" and col_cidade:
-                select_campos.append(f"{col_cidade}::text AS cidade")
-            elif campo == "uf" and col_uf:
-                select_campos.append(f"{col_uf}::text AS uf")
-            else:
-                select_campos.append(f"NULL::text AS {campo}")
-
-        rows = conn.execute(
-            text(
-                f"""
-                SELECT {", ".join(select_campos)}
-                FROM {tabela}
-                WHERE (:like IS NULL OR {col_nome} ILIKE :like OR COALESCE({col_cnpj if col_cnpj else "NULL"}::text, '') ILIKE :like)
-                ORDER BY nome
-                LIMIT :limite
-                """
-            ),
-            {"like": like, "limite": limite},
-        ).mappings().all()
-        return {"registros": [dict(r) for r in rows], "total": len(rows)}
+        # Fallback: tenta o layout padrao mesmo sem metadados visiveis.
+        return _executar("id", "nome", "cnpj", "cidade", "uf")
 
     try:
         with get_engine().begin() as conn:
+            if debug:
+                info = conn.execute(text("SELECT current_database(), current_user, current_schema()")).fetchone()
+                meta_debug = {
+                    "database": info[0] if info else None,
+                    "user": info[1] if info else None,
+                    "schema": info[2] if info else None,
+                }
+
             for tabela in tabelas_catalogo:
                 try:
                     out = _consultar_tabela(conn, tabela, _colunas_da_tabela(conn, tabela))
                     if out is not None:
                         if debug:
                             out["fonte"] = tabela
+                            out["debug"] = {"meta": meta_debug, "erros": erros_debug}
                         return out
                 except Exception as exc:
                     if debug:
@@ -394,6 +408,7 @@ def catalogo_fornecedores(
                     if out is not None:
                         if debug:
                             out["fonte"] = tabela
+                            out["debug"] = {"meta": meta_debug, "erros": erros_debug}
                         return out
                 except Exception as exc:
                     if debug:
@@ -405,7 +420,7 @@ def catalogo_fornecedores(
                 "registros": [],
                 "total": 0,
                 "aviso": "catalogo_indisponivel",
-                "debug": {"erros": erros_debug},
+                "debug": {"meta": meta_debug, "erros": erros_debug},
             }
         return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
 
@@ -414,7 +429,7 @@ def catalogo_fornecedores(
             "registros": [],
             "total": 0,
             "aviso": "catalogo_indisponivel",
-            "debug": {"erros": erros_debug},
+            "debug": {"meta": meta_debug, "erros": erros_debug},
         }
     return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
 
