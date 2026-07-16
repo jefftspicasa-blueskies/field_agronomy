@@ -3,13 +3,35 @@ import json
 import os
 import re
 import sys
+from uuid import UUID
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field, TypeAdapter
 from sqlalchemy import text
+
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    def load_dotenv(path: Optional[str] = None, *args, **kwargs):
+        env_path = path or ".env"
+        if not os.path.isfile(env_path):
+            return False
+
+        loaded = False
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                item = line.strip()
+                if not item or item.startswith("#") or "=" not in item:
+                    continue
+                key, value = item.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+                    loaded = True
+        return loaded
 
 
 # Mantem imports e assets relativos a esta pasta de servico.
@@ -261,6 +283,8 @@ def erro_cliente_seguro(exc: Exception) -> str:
     txt = str(exc or "").strip()
     txt_lower = txt.lower()
 
+    if "id_local_invalido" in txt_lower or "invalid input syntax for type uuid" in txt_lower:
+        return "id_local_invalido"
     if "validation" in txt_lower or "field required" in txt_lower:
         return "dados_invalidos"
     if "not null" in txt_lower:
@@ -453,6 +477,11 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
                 }
 
                 try:
+                    try:
+                        UUID(str(reg.id_local))
+                    except Exception as exc:
+                        raise ValueError("id_local_invalido") from exc
+
                     existe = conn.execute(
                         text(
                             """
@@ -498,7 +527,11 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
 
                 except Exception as exc:
                     erro_completo = str(exc)
-                    upsert_sync_erro(conn, payload, reg, payload_json, erro_completo)
+                    try:
+                        upsert_sync_erro(conn, payload, reg, payload_json, erro_completo)
+                    except Exception:
+                        # Se a trilha de erro falhar, ainda devolvemos erro por registro.
+                        pass
                     resultados.append(
                         {
                             "id_local": reg.id_local,

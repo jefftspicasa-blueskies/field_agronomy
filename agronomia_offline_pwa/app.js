@@ -121,6 +121,10 @@ function truncateText(value, maxLen = 34) {
   return `${text.slice(0, maxLen - 1)}…`;
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
 function humanizeSyncError(value) {
   const raw = String(value ?? "").trim();
   if (!raw) return "Unknown synchronization error";
@@ -467,6 +471,19 @@ async function syncNow() {
   }
 
   const pendentes = await getPendingQueue(100);
+
+  // Backward compatibility: older records may have short id_local values.
+  // The backend expects UUID, so migrate local IDs before sending.
+  for (const rec of pendentes) {
+    if (isUuid(rec.id_local)) continue;
+    const oldId = rec.id_local;
+    rec.id_local = uuid();
+    rec.status_sync = "pendente";
+    rec.erro = "";
+    await putQueueRecord(rec);
+    await deleteQueueRecord(oldId);
+  }
+
   if (!pendentes.length) {
     feedback("No pending records to sync.");
     return;
