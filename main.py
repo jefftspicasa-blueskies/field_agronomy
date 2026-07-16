@@ -1,6 +1,7 @@
 from datetime import date, datetime
 import json
 import os
+import re
 import sys
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
@@ -288,28 +289,75 @@ def catalogo_fornecedores(
 ):
     like = f"%{termo}%" if termo else None
 
-    tabelas_catalogo = (
+    tabelas_catalogo = [
         "trusted.fornecedores_agronomia",
         "public.fornecedores_agronomia",
-    )
+        "trusted.tb_fornecedores_agronomia",
+        "public.tb_fornecedores_agronomia",
+    ]
+
+    def _nome_tabela_seguro(nome: str) -> bool:
+        return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*", nome))
+
+    def _consultar_tabela(conn, tabela: str, colunas: Optional[set] = None):
+        if not _nome_tabela_seguro(tabela):
+            return None
+
+        colunas = colunas or set()
+        select_campos = ["id", "nome"]
+        for campo in ("cnpj", "cidade", "uf"):
+            if campo in colunas:
+                select_campos.append(campo)
+            else:
+                select_campos.append(f"NULL::text AS {campo}")
+
+        rows = conn.execute(
+            text(
+                f"""
+                SELECT {", ".join(select_campos)}
+                FROM {tabela}
+                WHERE (:like IS NULL OR nome ILIKE :like OR COALESCE(cnpj::text, '') ILIKE :like)
+                ORDER BY nome
+                LIMIT :limite
+                """
+            ),
+            {"like": like, "limite": limite},
+        ).mappings().all()
+        return {"registros": [dict(r) for r in rows], "total": len(rows)}
 
     try:
         with get_engine().begin() as conn:
             for tabela in tabelas_catalogo:
                 try:
-                    rows = conn.execute(
-                        text(
-                            f"""
-                            SELECT id, nome, cnpj, cidade, uf
-                            FROM {tabela}
-                            WHERE (:like IS NULL OR nome ILIKE :like OR cnpj ILIKE :like)
-                            ORDER BY nome
-                            LIMIT :limite
-                            """
-                        ),
-                        {"like": like, "limite": limite},
-                    ).mappings().all()
-                    return {"registros": [dict(r) for r in rows], "total": len(rows)}
+                    out = _consultar_tabela(conn, tabela, {"cnpj", "cidade", "uf"})
+                    if out is not None:
+                        return out
+                except Exception:
+                    continue
+
+            candidatos = conn.execute(
+                text(
+                    """
+                    SELECT table_schema, table_name, array_agg(column_name) AS cols
+                    FROM information_schema.columns
+                    WHERE table_schema IN ('trusted', 'public')
+                      AND table_name ILIKE '%fornecedor%'
+                    GROUP BY table_schema, table_name
+                    ORDER BY CASE WHEN table_schema = 'trusted' THEN 0 ELSE 1 END, table_name
+                    """
+                )
+            ).mappings().all()
+
+            for cand in candidatos:
+                cols = set(cand["cols"] or [])
+                if "id" not in cols or "nome" not in cols:
+                    continue
+                tabela = f"{cand['table_schema']}.{cand['table_name']}"
+                try:
+                    out = _consultar_tabela(conn, tabela, cols)
+                    if out is not None:
+                        out["fonte"] = tabela
+                        return out
                 except Exception:
                     continue
     except Exception:
