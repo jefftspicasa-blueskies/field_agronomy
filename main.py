@@ -288,21 +288,31 @@ def catalogo_fornecedores(
 ):
     like = f"%{termo}%" if termo else None
 
-    with get_engine().begin() as conn:
-        rows = conn.execute(
-            text(
-                """
-                SELECT id, nome, cnpj, cidade, uf
-                FROM trusted.fornecedores_agronomia
-                WHERE (:like IS NULL OR nome ILIKE :like OR cnpj ILIKE :like)
-                ORDER BY nome
-                LIMIT :limite
-                """
-            ),
-            {"like": like, "limite": limite},
-        ).mappings().all()
+    tabelas_catalogo = (
+        "trusted.fornecedores_agronomia",
+        "public.fornecedores_agronomia",
+    )
 
-    return {"registros": [dict(r) for r in rows], "total": len(rows)}
+    with get_engine().begin() as conn:
+        for tabela in tabelas_catalogo:
+            try:
+                rows = conn.execute(
+                    text(
+                        f"""
+                        SELECT id, nome, cnpj, cidade, uf
+                        FROM {tabela}
+                        WHERE (:like IS NULL OR nome ILIKE :like OR cnpj ILIKE :like)
+                        ORDER BY nome
+                        LIMIT :limite
+                        """
+                    ),
+                    {"like": like, "limite": limite},
+                ).mappings().all()
+                return {"registros": [dict(r) for r in rows], "total": len(rows)}
+            except Exception:
+                continue
+
+    return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
 
 
 @app.post("/api/agronomia/sync/lote")
