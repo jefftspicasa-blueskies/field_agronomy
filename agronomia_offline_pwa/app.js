@@ -402,13 +402,18 @@ async function coletarImagensColeta(existingImages = []) {
 
   const out = [];
   for (const file of files) {
-    const dataUrl = await resizeImageToDataUrl(file);
-    out.push({
-      nome: file.name,
-      tipo_original: file.type || "image/*",
-      tamanho_bytes: file.size,
-      data_url: dataUrl,
-    });
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      out.push({
+        nome: file.name,
+        tipo_original: file.type || "image/*",
+        tamanho_bytes: file.size,
+        data_url: dataUrl,
+      });
+    } catch {
+      // Image errors should not block record save.
+      continue;
+    }
   }
   return out;
 }
