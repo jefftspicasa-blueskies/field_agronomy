@@ -414,13 +414,13 @@ def catalogo_fornecedores(
                     if debug:
                         erros_debug.append(f"{tabela}: {str(exc)[:180]}")
                     continue
-    except Exception:
+    except Exception as exc:
         if debug:
             return {
                 "registros": [],
                 "total": 0,
                 "aviso": "catalogo_indisponivel",
-                "debug": {"meta": meta_debug, "erros": erros_debug},
+                "debug": {"meta": meta_debug, "erros": erros_debug + [str(exc)]},
             }
         return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
 
@@ -506,7 +506,7 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
                             "mensagem_erro": erro_cliente_seguro(exc),
                         }
                     )
-    except Exception:
+    except Exception as exc:
         return {
             "resultados": [
                 {
@@ -518,6 +518,7 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
                 for reg in payload.registros
             ],
             "aviso": "banco_indisponivel",
+            "detalhe": str(exc),
         }
 
     return {"resultados": resultados}
