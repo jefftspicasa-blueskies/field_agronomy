@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, TypeAdapter
 from sqlalchemy import text
 
@@ -14,6 +15,8 @@ from sqlalchemy import text
 ROOT_DIR = os.path.dirname(__file__)
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
+
+load_dotenv(os.path.join(ROOT_DIR, ".env"))
 
 from dal import get_engine
 
