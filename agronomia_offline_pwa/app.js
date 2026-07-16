@@ -17,10 +17,9 @@ const TIPO_INSPECAO = "inspecao_talhao";
 const TIPO_OCORRENCIA = "ocorrencia_campo";
 
 const TOTAL_AMOSTRAS = 30;
-const MIN_IMAGENS = 5;
 const AMOSTRA_DECIMAIS = 3;
 
-const pesoPtFormatter = new Intl.NumberFormat("pt-BR", {
+const pesoPtFormatter = new Intl.NumberFormat("en-US", {
   minimumFractionDigits: AMOSTRA_DECIMAIS,
   maximumFractionDigits: AMOSTRA_DECIMAIS,
 });
@@ -98,7 +97,12 @@ function feedback(msg, isError = false) {
 
 function toStatusPill(status) {
   const css = `status-pill status-${status || "pendente"}`;
-  return `<span class="${css}">${escapeHtml(status || "pendente")}</span>`;
+  const labels = {
+    pendente: "pending",
+    enviado: "sent",
+    erro: "error",
+  };
+  return `<span class="${css}">${escapeHtml(labels[status] || status || "pending")}</span>`;
 }
 
 function escapeHtml(value) {
@@ -179,10 +183,10 @@ function updateLastSyncUi() {
   const raw = localStorage.getItem("bs_last_sync");
   if (!lastSync) return;
   if (!raw) {
-    lastSync.textContent = "Ultimo sync: -";
+    lastSync.textContent = "Last sync: -";
     return;
   }
-  lastSync.textContent = `Ultimo sync: ${new Date(raw).toLocaleString("pt-BR")}`;
+  lastSync.textContent = `Last sync: ${new Date(raw).toLocaleString("en-US")}`;
 }
 
 function showView(viewId) {
@@ -216,11 +220,11 @@ function ensureDeviceId() {
 }
 
 function ensureUsuarioPadrao() {
-  const saved = localStorage.getItem("bs_usuario") || "campo";
+  const saved = localStorage.getItem("bs_usuario") || "field";
   for (const input of [...document.querySelectorAll("[data-usuario]")]) {
     input.value = saved;
     input.addEventListener("change", () => {
-      localStorage.setItem("bs_usuario", input.value.trim() || "campo");
+      localStorage.setItem("bs_usuario", input.value.trim() || "field");
     });
   }
 }
@@ -287,14 +291,14 @@ function updateImagensResumo() {
   if (!imagensResumo || !coletaImagensInput) return;
   const qtd = coletaImagensInput.files?.length || 0;
   if (qtd) {
-    imagensResumo.textContent = `${qtd} imagem(ns) selecionada(s).`;
+    imagensResumo.textContent = `${qtd} image(s) selected.`;
     return;
   }
   if (state.editAnaliseImagens?.length) {
-    imagensResumo.textContent = `Sem novas imagens. Mantendo ${state.editAnaliseImagens.length} do registro.`;
+    imagensResumo.textContent = `No new images. Keeping ${state.editAnaliseImagens.length} from the record.`;
     return;
   }
-  imagensResumo.textContent = "Nenhuma imagem selecionada.";
+  imagensResumo.textContent = "No images selected.";
 }
 
 function renderAmostrasInputs(initialValues = null) {
@@ -309,8 +313,8 @@ function renderAmostrasInputs(initialValues = null) {
     const wrap = document.createElement("div");
     wrap.className = "amostra-item";
     wrap.innerHTML = `
-      <span>Amostra ${i}</span>
-      <input type="text" inputmode="numeric" data-amostra-peso="${i}" placeholder="0,000" required />
+      <span>Sample ${i}</span>
+      <input type="text" inputmode="numeric" data-amostra-peso="${i}" placeholder="0.000" required />
     `;
     const input = wrap.querySelector("input");
     const valorInicial = values[i - 1] === "" ? 0 : Number(values[i - 1]);
@@ -335,7 +339,7 @@ function updateAmostrasResumoAndMedia() {
   const values = inputs.map((el) => parsePesoMascara(el.value)).filter((v) => Number.isFinite(v) && v > 0);
 
   if (amostrasResumo) {
-    amostrasResumo.textContent = `${values.length}/${TOTAL_AMOSTRAS} preenchidas`;
+    amostrasResumo.textContent = `${values.length}/${TOTAL_AMOSTRAS} filled`;
   }
 
   const pesoInput = getColetaPesoInput();
@@ -348,14 +352,14 @@ function updateAmostrasResumoAndMedia() {
 }
 
 function coletarAmostrasPesos() {
-  if (!amostrasPesosContainer) throw new Error("Container de amostras nao encontrado.");
+  if (!amostrasPesosContainer) throw new Error("Samples container not found.");
   const inputs = [...amostrasPesosContainer.querySelectorAll("input[data-amostra-peso]")];
-  if (inputs.length !== TOTAL_AMOSTRAS) throw new Error(`Esperado ${TOTAL_AMOSTRAS} amostras.`);
+  if (inputs.length !== TOTAL_AMOSTRAS) throw new Error(`Expected ${TOTAL_AMOSTRAS} samples.`);
 
   return inputs.map((el, idx) => {
     const n = parsePesoMascara(el.value);
     if (!Number.isFinite(n) || n <= 0) {
-      throw new Error(`Informe peso valido para a amostra ${idx + 1}.`);
+      throw new Error(`Provide a valid weight for sample ${idx + 1}.`);
     }
     return Number(n.toFixed(AMOSTRA_DECIMAIS));
   });
@@ -375,7 +379,7 @@ function resizeImageToDataUrl(file, maxWidth = 1280, maxHeight = 1280, quality =
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         URL.revokeObjectURL(objectUrl);
-        reject(new Error("Nao foi possivel processar imagem."));
+        reject(new Error("Could not process image."));
         return;
       }
       ctx.drawImage(img, 0, 0, width, height);
@@ -385,7 +389,7 @@ function resizeImageToDataUrl(file, maxWidth = 1280, maxHeight = 1280, quality =
     };
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      reject(new Error(`Falha ao ler imagem ${file.name}.`));
+      reject(new Error(`Failed to read image ${file.name}.`));
     };
     img.src = objectUrl;
   });
@@ -394,7 +398,7 @@ function resizeImageToDataUrl(file, maxWidth = 1280, maxHeight = 1280, quality =
 async function coletarImagensColeta(existingImages = []) {
   const files = [...(coletaImagensInput?.files || [])];
   if (!files.length && existingImages.length) return existingImages;
-  if (files.length < MIN_IMAGENS) throw new Error(`Anexe no minimo ${MIN_IMAGENS} imagens.`);
+  if (!files.length) return [];
 
   const out = [];
   for (const file of files) {
@@ -424,7 +428,7 @@ async function readJsonResponse(res, contextLabel) {
   if (!res.ok) throw new Error(`${contextLabel}: HTTP ${res.status}`);
   if (!contentType.includes("application/json")) {
     const trecho = body.slice(0, 80).replace(/\s+/g, " ").trim();
-    throw new Error(`${contextLabel}: resposta nao JSON. Trecho: ${trecho}`);
+    throw new Error(`${contextLabel}: non-JSON response. Snippet: ${trecho}`);
   }
   return JSON.parse(body);
 }
@@ -433,13 +437,13 @@ async function syncNow() {
   if (!navigator.onLine) return;
   const apiUrl = getApiUrl();
   if (location.protocol === "https:" && apiUrl.startsWith("http://")) {
-    feedback("URL da API invalida para HTTPS.", true);
+    feedback("Invalid API URL for HTTPS.", true);
     return;
   }
 
   const pendentes = await getPendingQueue(100);
   if (!pendentes.length) {
-    feedback("Sem pendencias para sincronizar.");
+    feedback("No pending records to sync.");
     return;
   }
 
@@ -475,7 +479,7 @@ async function syncNow() {
         },
         body: JSON.stringify(payload),
       });
-      const json = await readJsonResponse(res, "Erro no sync");
+      const json = await readJsonResponse(res, "Sync error");
       const results = json.resultados || [];
 
       for (const r of lote) {
@@ -486,7 +490,7 @@ async function syncNow() {
           r.sincronizado_em = new Date().toISOString();
         } else {
           r.status_sync = "erro";
-          r.erro = found?.mensagem_erro || "Falha ao enviar";
+          r.erro = found?.mensagem_erro || "Failed to send";
           totalErros += 1;
         }
         r.tentativas_envio = (r.tentativas_envio || 0) + 1;
@@ -506,9 +510,9 @@ async function syncNow() {
   localStorage.setItem("bs_last_sync", new Date().toISOString());
   updateLastSyncUi();
   if (totalErros) {
-    feedback(`Sincronizacao concluida com ${totalErros} erro(s).`, true);
+    feedback(`Synchronization finished with ${totalErros} error(s).`, true);
   } else {
-    feedback("Sincronizacao concluida.");
+    feedback("Synchronization finished.");
   }
 
   await refreshAll();
@@ -521,7 +525,7 @@ async function upsertOfflineRecord(tipo, form, payload, editId = null) {
     id_local: editId || uuid(),
     tipo_registro: tipo,
     dispositivo_id: String(fd.get("dispositivo_id") || localStorage.getItem("bs_dispositivo_id") || ""),
-    usuario: String(fd.get("usuario") || localStorage.getItem("bs_usuario") || "campo"),
+    usuario: String(fd.get("usuario") || localStorage.getItem("bs_usuario") || "field"),
     criado_em_local: old?.criado_em_local || new Date().toISOString(),
     payload_json: payload,
     status_sync: "pendente",
@@ -548,7 +552,7 @@ async function renderFornecedorSelects() {
   const fornecedores = await listFornecedoresLocal();
   const options = fornecedores.length
     ? fornecedores.map((f) => `<option value="${escapeHtml(f.id)}">${escapeHtml(f.id)} - ${escapeHtml(truncateText(f.nome, 30))}</option>`).join("")
-    : `<option value="" disabled selected>Sem fornecedores locais</option>`;
+    : `<option value="" disabled selected>No local suppliers</option>`;
 
   for (const select of [...document.querySelectorAll("[data-fornecedor-select]")]) {
     const current = select.value;
@@ -576,12 +580,12 @@ async function renderFornecedoresTable() {
         <td>${escapeHtml(f.cnpj || "-")}</td>
         <td>${escapeHtml((f.cidade || "-") + (f.uf ? `/${f.uf}` : ""))}</td>
         <td class="actions">
-          <button class="ghost" data-ac="edit-fornecedor" data-id="${escapeHtml(f.id)}" type="button">Editar</button>
-          <button class="ghost" data-ac="del-fornecedor" data-id="${escapeHtml(f.id)}" type="button">Excluir</button>
+          <button class="ghost" data-ac="edit-fornecedor" data-id="${escapeHtml(f.id)}" type="button">Edit</button>
+          <button class="ghost" data-ac="del-fornecedor" data-id="${escapeHtml(f.id)}" type="button">Delete</button>
         </td>
       </tr>
     `).join("")
-    : `<tr><td colspan="5" class="muted">Nenhum fornecedor encontrado.</td></tr>`;
+    : `<tr><td colspan="5" class="muted">No suppliers found.</td></tr>`;
 }
 
 async function renderHistorico(tipo, bodyEl, searchInputId, formatRow) {
@@ -602,7 +606,7 @@ async function renderHistorico(tipo, bodyEl, searchInputId, formatRow) {
 
   bodyEl.innerHTML = rows.length
     ? rows.map((r) => formatRow(r, fornecedores)).join("")
-    : `<tr><td colspan="6" class="muted">Sem registros no historico.</td></tr>`;
+    : `<tr><td colspan="6" class="muted">No history records.</td></tr>`;
 }
 
 async function renderAnalisesTable() {
@@ -618,8 +622,8 @@ async function renderAnalisesTable() {
         <td class="col-optional">${escapeHtml(p.variedade || "-")}</td>
         <td>${toStatusPill(r.status_sync)}</td>
         <td class="actions">
-          <button class="ghost" data-ac="edit-analise" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Editar</button>
-          <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Excluir</button>
+          <button class="ghost" data-ac="edit-analise" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Edit</button>
+          <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Delete</button>
         </td>
       </tr>
     `;
@@ -639,8 +643,8 @@ async function renderInspecoesTable() {
         <td>${escapeHtml(p.estagio_fenologico || "-")}</td>
         <td>${toStatusPill(r.status_sync)}</td>
         <td class="actions">
-          <button class="ghost" data-ac="edit-inspecao" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Editar</button>
-          <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Excluir</button>
+          <button class="ghost" data-ac="edit-inspecao" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Edit</button>
+          <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Delete</button>
         </td>
       </tr>
     `;
@@ -660,8 +664,8 @@ async function renderOcorrenciasTable() {
         <td>${escapeHtml(fornecedor)}</td>
         <td>${toStatusPill(r.status_sync)}</td>
         <td class="actions">
-          <button class="ghost" data-ac="edit-ocorrencia" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Editar</button>
-          <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Excluir</button>
+          <button class="ghost" data-ac="edit-ocorrencia" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Edit</button>
+          <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Delete</button>
         </td>
       </tr>
     `;
@@ -673,9 +677,9 @@ async function renderQueueTable() {
   const pend = all.filter((r) => r.status_sync === "pendente").length;
   const err = all.filter((r) => r.status_sync === "erro").length;
   const env = all.filter((r) => r.status_sync === "enviado").length;
-  kpiPendentes.textContent = `Pendentes: ${pend}`;
-  kpiErros.textContent = `Erros: ${err}`;
-  kpiEnviados.textContent = `Enviados: ${env}`;
+  kpiPendentes.textContent = `Pending: ${pend}`;
+  kpiErros.textContent = `Errors: ${err}`;
+  kpiEnviados.textContent = `Sent: ${env}`;
 
   queueBody.innerHTML = all.length
     ? all
@@ -689,7 +693,7 @@ async function renderQueueTable() {
           <td>${escapeHtml(r.erro || "-")}</td>
         </tr>
       `).join("")
-    : `<tr><td colspan="5" class="muted">Fila vazia.</td></tr>`;
+    : `<tr><td colspan="5" class="muted">Queue is empty.</td></tr>`;
 }
 
 async function refreshAll() {
@@ -704,7 +708,7 @@ async function refreshAll() {
 async function fetchFornecedoresApi() {
   const url = getCatalogoUrl();
   if (!navigator.onLine) {
-    feedback("Sem internet para atualizar catalogo.", true);
+    feedback("No internet to refresh catalog.", true);
     return;
   }
 
@@ -717,13 +721,13 @@ async function fetchFornecedoresApi() {
         ...buildAuthHeaders(),
       },
     });
-    const json = await readJsonResponse(res, "Erro ao atualizar catalogo");
+    const json = await readJsonResponse(res, "Catalog refresh error");
     const rows = json.registros || [];
     await upsertFornecedoresLocal(rows);
     await refreshAll();
-    feedback(`Catalogo atualizado: ${rows.length} fornecedores.`);
+    feedback(`Catalog refreshed: ${rows.length} suppliers.`);
   } catch (err) {
-    feedback(`Erro ao atualizar catalogo: ${String(err)}`, true);
+    feedback(`Failed to refresh catalog: ${String(err)}`, true);
   }
 }
 
@@ -731,7 +735,7 @@ function fillAnaliseForm(rec) {
   const p = rec.payload_json || {};
   state.editAnaliseId = rec.id_local;
   state.editAnaliseImagens = p.imagens_coleta || [];
-  document.getElementById("analiseFormTitle").textContent = `Editar analise ${rec.id_local.slice(0, 8)}`;
+  document.getElementById("analiseFormTitle").textContent = `Edit analysis ${rec.id_local.slice(0, 8)}`;
   coletaForm.querySelector("select[name='fornecedor_id']").value = String(p.fornecedor_id || "");
   coletaForm.querySelector("input[name='talhao']").value = p.talhao || "";
   coletaForm.querySelector("input[name='variedade']").value = p.variedade || "";
@@ -751,7 +755,7 @@ function fillAnaliseForm(rec) {
 function fillInspecaoForm(rec) {
   const p = rec.payload_json || {};
   state.editInspecaoId = rec.id_local;
-  document.getElementById("inspecaoFormTitle").textContent = `Editar inspecao ${rec.id_local.slice(0, 8)}`;
+  document.getElementById("inspecaoFormTitle").textContent = `Edit inspection ${rec.id_local.slice(0, 8)}`;
   inspecaoForm.querySelector("select[name='fornecedor_id']").value = String(p.fornecedor_id || "");
   inspecaoForm.querySelector("input[name='talhao']").value = p.talhao || "";
   inspecaoForm.querySelector("input[name='estagio_fenologico']").value = p.estagio_fenologico || "";
@@ -760,7 +764,7 @@ function fillInspecaoForm(rec) {
   inspecaoForm.querySelector("input[name='doencas']").value = p.doencas || "";
   inspecaoForm.querySelector("input[name='irrigacao_escala']").value = p.irrigacao_escala ?? 0;
   inspecaoForm.querySelector("input[name='adubacao_escala']").value = p.adubacao_escala ?? 0;
-  inspecaoForm.querySelector("select[name='clima']").value = p.clima || "Ensolarado";
+  inspecaoForm.querySelector("select[name='clima']").value = p.clima || "Sunny";
   inspecaoForm.querySelector("input[name='acao_recomendada']").value = p.acao_recomendada || "";
   inspecaoForm.querySelector("textarea[name='observacoes']").value = p.observacoes || "";
   showView("view-inspecao-form");
@@ -769,9 +773,9 @@ function fillInspecaoForm(rec) {
 function fillOcorrenciaForm(rec) {
   const p = rec.payload_json || {};
   state.editOcorrenciaId = rec.id_local;
-  document.getElementById("ocorrenciaFormTitle").textContent = `Editar ocorrencia ${rec.id_local.slice(0, 8)}`;
-  ocorrenciaForm.querySelector("select[name='tipo']").value = p.tipo || "Outro";
-  ocorrenciaForm.querySelector("select[name='severidade']").value = p.severidade || "Baixa";
+  document.getElementById("ocorrenciaFormTitle").textContent = `Edit occurrence ${rec.id_local.slice(0, 8)}`;
+  ocorrenciaForm.querySelector("select[name='tipo']").value = p.tipo || "Other";
+  ocorrenciaForm.querySelector("select[name='severidade']").value = p.severidade || "Low";
   ocorrenciaForm.querySelector("select[name='fornecedor_id']").value = String(p.fornecedor_id || "");
   ocorrenciaForm.querySelector("input[name='talhao']").value = p.talhao || "";
   ocorrenciaForm.querySelector("input[name='data_hora']").value = (p.data_hora || nowLocalInputDateTime()).slice(0, 16);
@@ -783,7 +787,7 @@ function fillOcorrenciaForm(rec) {
 function resetAnaliseForm() {
   state.editAnaliseId = null;
   state.editAnaliseImagens = [];
-  document.getElementById("analiseFormTitle").textContent = "Nova analise";
+  document.getElementById("analiseFormTitle").textContent = "New analysis";
   coletaForm.reset();
   ensureDeviceId();
   ensureUsuarioPadrao();
@@ -793,7 +797,7 @@ function resetAnaliseForm() {
 
 function resetInspecaoForm() {
   state.editInspecaoId = null;
-  document.getElementById("inspecaoFormTitle").textContent = "Nova inspecao";
+  document.getElementById("inspecaoFormTitle").textContent = "New inspection";
   inspecaoForm.reset();
   ensureDeviceId();
   ensureUsuarioPadrao();
@@ -802,7 +806,7 @@ function resetInspecaoForm() {
 
 function resetOcorrenciaForm() {
   state.editOcorrenciaId = null;
-  document.getElementById("ocorrenciaFormTitle").textContent = "Nova ocorrencia";
+  document.getElementById("ocorrenciaFormTitle").textContent = "New occurrence";
   ocorrenciaForm.reset();
   ensureDeviceId();
   ensureUsuarioPadrao();
@@ -812,7 +816,7 @@ function resetOcorrenciaForm() {
 async function setupActions() {
   document.getElementById("fornecedorNovo")?.addEventListener("click", () => {
     state.editFornecedorId = null;
-    document.getElementById("fornecedorFormTitle").textContent = "Cadastrar fornecedor";
+    document.getElementById("fornecedorFormTitle").textContent = "Create supplier";
     fornecedorForm.reset();
     showView("view-fornecedor-form");
   });
@@ -820,7 +824,7 @@ async function setupActions() {
   document.getElementById("fornecedorVoltarLista")?.addEventListener("click", () => {
     state.editFornecedorId = null;
     fornecedorForm.reset();
-    document.getElementById("fornecedorFormTitle").textContent = "Cadastrar fornecedor";
+    document.getElementById("fornecedorFormTitle").textContent = "Create supplier";
     showView("view-fornecedores");
   });
 
@@ -871,7 +875,7 @@ async function setupActions() {
   document.getElementById("fornecedorCancelar")?.addEventListener("click", () => {
     state.editFornecedorId = null;
     fornecedorForm.reset();
-    document.getElementById("fornecedorFormTitle").textContent = "Cadastrar fornecedor";
+    document.getElementById("fornecedorFormTitle").textContent = "Create supplier";
     showView("view-fornecedores");
   });
 
@@ -881,18 +885,18 @@ async function setupActions() {
   saveApiUrlBtn?.addEventListener("click", () => {
     const url = String(apiUrlInput?.value || "").trim();
     if (!url || !/^https?:\/\//i.test(url)) {
-      feedback("Informe uma URL valida com http:// ou https://", true);
+      feedback("Enter a valid URL with http:// or https://", true);
       return;
     }
     setApiUrl(url);
     setApiKey(String(apiKeyInput?.value || "").trim());
-    feedback("URL da API e token salvos.");
+    feedback("API URL and token saved.");
   });
 
   clearEnviadosBtn?.addEventListener("click", async () => {
     await clearSentQueue();
     await refreshAll();
-    feedback("Registros enviados removidos da fila.");
+    feedback("Sent records removed from queue.");
   });
 
   exportQueueBtn?.addEventListener("click", async () => {
@@ -901,7 +905,7 @@ async function setupActions() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `fila_offline_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `offline_queue_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -919,9 +923,9 @@ async function setupActions() {
         }
       }
       await refreshAll();
-      feedback(`Importacao concluida. ${count} registros adicionados.`);
+      feedback(`Import complete. ${count} records added.`);
     } catch (err) {
-      feedback(`Falha ao importar: ${String(err)}`, true);
+      feedback(`Import failed: ${String(err)}`, true);
     } finally {
       importQueueFile.value = "";
     }
@@ -943,7 +947,7 @@ async function setupActions() {
       const f = rows.find((r) => Number(r.id) === id);
       if (!f) return;
       state.editFornecedorId = id;
-      document.getElementById("fornecedorFormTitle").textContent = `Editar fornecedor ${id}`;
+      document.getElementById("fornecedorFormTitle").textContent = `Edit supplier ${id}`;
       document.getElementById("fornecedorId").value = String(f.id || "");
       document.getElementById("fornecedorNome").value = f.nome || "";
       document.getElementById("fornecedorCnpj").value = f.cnpj || "";
@@ -954,10 +958,10 @@ async function setupActions() {
     }
 
     if (ac === "del-fornecedor") {
-      if (!confirm(`Excluir fornecedor ${id}?`)) return;
+      if (!confirm(`Delete supplier ${id}?`)) return;
       await deleteFornecedorLocal(id);
       await refreshAll();
-      feedback("Fornecedor excluido localmente.");
+      feedback("Supplier deleted locally.");
     }
   });
 
@@ -971,10 +975,10 @@ async function setupActions() {
     if (!rec) return;
 
     if (ac === "del-registro") {
-      if (!confirm("Excluir este registro local?")) return;
+      if (!confirm("Delete this local record?")) return;
       await deleteQueueRecord(id);
       await refreshAll();
-      feedback("Registro excluido localmente.");
+      feedback("Record deleted locally.");
       return;
     }
 
@@ -998,16 +1002,16 @@ async function setupActions() {
     };
 
     if (!fornecedor.id || !fornecedor.nome) {
-      feedback("Fornecedor exige ID e nome.", true);
+      feedback("Supplier requires ID and name.", true);
       return;
     }
 
     await upsertFornecedoresLocal([fornecedor]);
     state.editFornecedorId = null;
     fornecedorForm.reset();
-    document.getElementById("fornecedorFormTitle").textContent = "Cadastrar fornecedor";
+    document.getElementById("fornecedorFormTitle").textContent = "Create supplier";
     await refreshAll();
-    feedback("Fornecedor salvo localmente.");
+    feedback("Supplier saved locally.");
     showView("view-fornecedores");
   });
 
@@ -1040,16 +1044,16 @@ async function setupActions() {
       };
 
       if (!payload.fornecedor_id || !payload.talhao || !payload.variedade) {
-        feedback("Preencha os campos obrigatorios da analise.", true);
+        feedback("Fill in the required analysis fields.", true);
         return;
       }
 
       await upsertOfflineRecord(TIPO_ANALISE, coletaForm, payload, state.editAnaliseId);
       resetAnaliseForm();
-      feedback("Analise salva offline com sucesso.");
+      feedback("Analysis saved offline successfully.");
       showView("view-analises");
     } catch (err) {
-      feedback(`Erro ao salvar analise: ${String(err)}`, true);
+      feedback(`Failed to save analysis: ${String(err)}`, true);
     }
   });
 
@@ -1072,16 +1076,16 @@ async function setupActions() {
       };
 
       if (!payload.fornecedor_id || !payload.talhao || !payload.estagio_fenologico) {
-        feedback("Preencha os campos obrigatorios da inspecao.", true);
+        feedback("Fill in the required inspection fields.", true);
         return;
       }
 
       await upsertOfflineRecord(TIPO_INSPECAO, inspecaoForm, payload, state.editInspecaoId);
       resetInspecaoForm();
-      feedback("Inspecao salva offline com sucesso.");
+      feedback("Inspection saved offline successfully.");
       showView("view-inspecoes");
     } catch (err) {
-      feedback(`Erro ao salvar inspecao: ${String(err)}`, true);
+      feedback(`Failed to save inspection: ${String(err)}`, true);
     }
   });
 
@@ -1090,8 +1094,8 @@ async function setupActions() {
     try {
       const fd = new FormData(ocorrenciaForm);
       const payload = {
-        tipo: String(fd.get("tipo") || "Outro"),
-        severidade: String(fd.get("severidade") || "Baixa"),
+        tipo: String(fd.get("tipo") || "Other"),
+        severidade: String(fd.get("severidade") || "Low"),
         fornecedor_id: Number(fd.get("fornecedor_id")),
         talhao: String(fd.get("talhao") || ""),
         data_hora: String(fd.get("data_hora") || nowLocalInputDateTime()),
@@ -1100,16 +1104,16 @@ async function setupActions() {
       };
 
       if (!payload.fornecedor_id || !payload.descricao) {
-        feedback("Preencha os campos obrigatorios da ocorrencia.", true);
+        feedback("Fill in the required occurrence fields.", true);
         return;
       }
 
       await upsertOfflineRecord(TIPO_OCORRENCIA, ocorrenciaForm, payload, state.editOcorrenciaId);
       resetOcorrenciaForm();
-      feedback("Ocorrencia salva offline com sucesso.");
+      feedback("Occurrence saved offline successfully.");
       showView("view-ocorrencias");
     } catch (err) {
-      feedback(`Erro ao salvar ocorrencia: ${String(err)}`, true);
+      feedback(`Failed to save occurrence: ${String(err)}`, true);
     }
   });
 
