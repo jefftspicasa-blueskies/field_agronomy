@@ -958,52 +958,123 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     }));
   }
 
-  const lines = [
-    "Analysis Report",
-    "",
-    `Local ID: ${rec.id_local || "-"}`,
-    `Date: ${p.data_analise || "-"}`,
-    `Supplier: ${fornecedorNome || "-"}`,
-    `Plot: ${p.talhao || "-"}`,
-    `Variety: ${p.variedade || "-"}`,
-    `Average Weight (g): ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}`,
-    `Average Ripeness: ${Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"}`,
-    `Average Dry Matter (%): ${Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"}`,
-    `Fruit Count: ${p.numero_frutos_analisados ?? "-"}`,
-    `Minor Defects: ${p.defeitos_leves ?? 0}`,
-    `Critical Defects: ${p.defeitos_criticos ?? 0}`,
-    `Notes: ${p.observacoes || "-"}`,
-    "",
-    "Collected Samples",
-    "Item | Weight (g) | Ripeness | Dry Matter (%)",
+  const content = [];
+  const pushText = (fontAlias, size, x, y, value) => {
+    const txt = escapePdfText(value).slice(0, 140);
+    content.push("BT");
+    content.push(`${fontAlias} ${size} Tf`);
+    content.push(`1 0 0 1 ${x} ${y} Tm`);
+    content.push(`(${txt}) Tj`);
+    content.push("ET");
+  };
+
+  // Header band
+  content.push("0.09 0.36 0.65 rg");
+  content.push("40 785 515 35 re f");
+  content.push("1 1 1 rg");
+  pushText("/F2", 18, 52, 798, "Analysis Report");
+  pushText("/F1", 10, 400, 798, `ID: ${rec.id_local || "-"}`);
+
+  // Summary title
+  content.push("0.12 0.2 0.3 rg");
+  pushText("/F2", 12, 50, 765, "Summary");
+
+  const summary = [
+    ["Date", p.data_analise || "-"],
+    ["Supplier", fornecedorNome || "-"],
+    ["Plot", p.talhao || "-"],
+    ["Variety", p.variedade || "-"],
+    ["Average Weight (g)", Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"],
+    ["Average Ripeness", Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"],
+    ["Average Dry Matter (%)", Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"],
+    ["Fruit Count", String(p.numero_frutos_analisados ?? "-")],
+    ["Minor Defects", String(p.defeitos_leves ?? 0)],
+    ["Critical Defects", String(p.defeitos_criticos ?? 0)],
   ];
 
-  for (let idx = 0; idx < itens.length; idx += 1) {
-    const item = itens[idx] || {};
+  let y = 748;
+  for (const [label, value] of summary) {
+    pushText("/F2", 10, 50, y, `${label}:`);
+    pushText("/F1", 10, 210, y, String(value));
+    y -= 16;
+  }
+
+  pushText("/F2", 10, 50, y, "Notes:");
+  const notes = String(p.observacoes || "-");
+  const notesChunks = notes.match(/.{1,88}/g) || ["-"];
+  let notesY = y;
+  for (const chunk of notesChunks.slice(0, 2)) {
+    pushText("/F1", 10, 210, notesY, chunk);
+    notesY -= 14;
+  }
+
+  // Samples section title
+  const tableTop = notesY - 22;
+  content.push("0.12 0.2 0.3 rg");
+  pushText("/F2", 12, 50, tableTop + 8, "Collected Samples");
+
+  // Table layout
+  const x0 = 50;
+  const y0 = tableTop - 8;
+  const colW = [55, 150, 130, 160];
+  const rowH = 18;
+  const maxRows = 18;
+  const rowsToShow = Math.min(itens.length, maxRows);
+  const tableWidth = colW.reduce((a, b) => a + b, 0);
+  const totalRows = rowsToShow + 1; // header + data
+
+  // Header background
+  content.push("0.9 0.94 0.98 rg");
+  content.push(`${x0} ${y0 - rowH} ${tableWidth} ${rowH} re f`);
+
+  // Grid
+  content.push("0.75 0.82 0.9 RG");
+  content.push("0.7 w");
+  for (let r = 0; r <= totalRows; r += 1) {
+    const yy = y0 - r * rowH;
+    content.push(`${x0} ${yy} m ${x0 + tableWidth} ${yy} l S`);
+  }
+
+  let xLine = x0;
+  content.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
+  for (const w of colW) {
+    xLine += w;
+    content.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
+  }
+
+  // Header text
+  const headers = ["Item", "Weight (g)", "Ripeness", "Dry Matter (%)"];
+  let hx = x0 + 6;
+  for (let i = 0; i < headers.length; i += 1) {
+    pushText("/F2", 10, hx, y0 - 13, headers[i]);
+    hx += colW[i];
+  }
+
+  // Data rows
+  for (let i = 0; i < rowsToShow; i += 1) {
+    const item = itens[i] || {};
     const peso = Number(item.peso_pu);
     const ripeness = Number(item.maturacao);
     const dry = Number(item.materia_seca);
-    lines.push(
-      `${idx + 1} | ${Number.isFinite(peso) ? peso.toFixed(3) : "-"} | ${Number.isFinite(ripeness) ? ripeness.toFixed(2) : "-"} | ${Number.isFinite(dry) ? dry.toFixed(4) : "-"}`
-    );
+    const rowVals = [
+      String(i + 1),
+      Number.isFinite(peso) ? peso.toFixed(3) : "-",
+      Number.isFinite(ripeness) ? ripeness.toFixed(2) : "-",
+      Number.isFinite(dry) ? dry.toFixed(4) : "-",
+    ];
+
+    let cx = x0 + 6;
+    const cy = y0 - rowH * (i + 1) - 13;
+    for (let c = 0; c < rowVals.length; c += 1) {
+      pushText("/F1", 10, cx, cy, rowVals[c]);
+      cx += colW[c];
+    }
   }
 
-  const maxLines = 52;
-  const safeLines = lines.slice(0, maxLines);
-  if (lines.length > maxLines) {
-    safeLines[safeLines.length - 1] = "... Report truncated: too many sample lines.";
+  if (itens.length > maxRows) {
+    pushText("/F1", 9, 50, y0 - rowH * (totalRows + 1), `Showing first ${maxRows} of ${itens.length} samples.`);
   }
 
-  const content = [];
-  content.push("BT");
-  content.push("/F1 11 Tf");
-  content.push("50 810 Td");
-  for (let i = 0; i < safeLines.length; i += 1) {
-    const line = escapePdfText(safeLines[i]).slice(0, 120);
-    content.push(`(${line}) Tj`);
-    if (i < safeLines.length - 1) content.push("0 -14 Td");
-  }
-  content.push("ET");
   const contentStream = `${content.join("\n")}\n`;
   const contentLength = contentStream.length;
 
@@ -1013,7 +1084,10 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
     `4 0 obj\n<< /Length ${contentLength} >>\nstream\n${contentStream}endstream\nendobj\n`,
     "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    "6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n",
   ];
+
+  objects[2] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>\nendobj\n";
 
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
