@@ -19,7 +19,7 @@ const TIPO_OCORRENCIA = "ocorrencia_campo";
 const AMOSTRAS_POR_PAGINA = 1;
 const AMOSTRA_DECIMAIS = 3;
 
-const pesoPtFormatter = new Intl.NumberFormat("en-US", {
+const pesoPtFormatter = new Intl.NumberFormat("pt-BR", {
   minimumFractionDigits: AMOSTRA_DECIMAIS,
   maximumFractionDigits: AMOSTRA_DECIMAIS,
 });
@@ -439,7 +439,7 @@ function renderAmostrasInputs(initialItems = null) {
       <div class="amostra-title">Item ${idxGlobal + 1}</div>
       <label>
         Weight (g)
-        <input type="text" inputmode="numeric" data-amostra-peso="${idxGlobal}" placeholder="0.000" required />
+        <input type="text" inputmode="numeric" data-amostra-peso="${idxGlobal}" placeholder="0,000" required />
       </label>
       <label>
         Ripeness (1-5)
