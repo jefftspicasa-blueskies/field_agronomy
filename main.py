@@ -431,24 +431,96 @@ def upsert_sync_erro(conn, payload: SyncLoteIn, reg: RegistroIn, payload_json: D
 
 
 def inserir_analise(conn, dados: AnaliseDados) -> int:
-    inserted = conn.execute(
+    # Resolve schema drift by mapping known aliases to existing columns.
+    table_schema = "trusted"
+    table_name = "tb_analise_detalhada_agronomia"
+
+    col_rows = conn.execute(
         text(
             """
-            INSERT INTO trusted.tb_analise_detalhada_agronomia
-            (fornecedor_id, numero_frutos_analisados, defeitos_leves, defeitos_criticos, materia_seca, peso_pu, data_analise)
-            VALUES (:fornecedor_id, :numero_frutos_analisados, :defeitos_leves, :defeitos_criticos, :materia_seca, :peso_pu, COALESCE(:data_analise, CURRENT_DATE))
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table
+            """
+        ),
+        {"schema": table_schema, "table": table_name},
+    ).fetchall()
+    colunas = {str(r[0]) for r in col_rows}
+
+    if not colunas:
+        raise ValueError("invalid_data")
+
+    def _pick(*aliases: str) -> Optional[str]:
+        for alias in aliases:
+            if alias in colunas:
+                return alias
+        return None
+
+    campos: List[str] = []
+    valores_expr: List[str] = []
+    params: Dict[str, Any] = {}
+
+    def _add(coluna: Optional[str], valor: Any, *, use_current_date_when_null: bool = False):
+        if not coluna:
+            return
+        campos.append(coluna)
+        if use_current_date_when_null:
+            valores_expr.append(f"COALESCE(:{coluna}, CURRENT_DATE)")
+        else:
+            valores_expr.append(f":{coluna}")
+        params[coluna] = valor
+
+    fornecedor_col = _pick("fornecedor_id", "id_fornecedor")
+    if not fornecedor_col:
+        raise ValueError("invalid_data")
+
+    _add(fornecedor_col, dados.fornecedor_id)
+    _add(_pick("talhao"), dados.talhao)
+    _add(_pick("variedade"), dados.variedade)
+    _add(_pick("numero_frutos_analisados", "qtd_frutos_analisados", "quantidade_frutos"), dados.numero_frutos_analisados)
+    _add(_pick("defeitos_leves", "defeitos_leve", "qtd_defeitos_leves"), dados.defeitos_leves)
+    _add(_pick("defeitos_criticos", "qtd_defeitos_criticos"), dados.defeitos_criticos)
+    _add(_pick("materia_seca", "dry_matter", "materia_seca_percentual"), dados.materia_seca)
+    _add(_pick("maturacao", "ripeness"), dados.maturacao)
+    _add(_pick("peso_pu", "peso_medio", "peso_medio_fruto"), dados.peso_pu)
+    _add(_pick("data_analise", "data"), dados.data_analise, use_current_date_when_null=True)
+
+    if not campos:
+        raise ValueError("invalid_data")
+
+    id_col_has_default = conn.execute(
+        text(
+            """
+            SELECT column_default IS NOT NULL
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table
+              AND column_name = 'id'
+            """
+        ),
+        {"schema": table_schema, "table": table_name},
+    ).scalar()
+
+    if (not id_col_has_default) and ("id" in colunas):
+        conn.execute(text(f"LOCK TABLE {table_schema}.{table_name} IN SHARE ROW EXCLUSIVE MODE"))
+        next_id = conn.execute(
+            text(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_schema}.{table_name}")
+        ).scalar()
+        campos = ["id", *campos]
+        valores_expr = [":id", *valores_expr]
+        params["id"] = int(next_id)
+
+    inserted = conn.execute(
+        text(
+            f"""
+            INSERT INTO {table_schema}.{table_name}
+            ({", ".join(campos)})
+            VALUES ({", ".join(valores_expr)})
             RETURNING id
             """
         ),
-        {
-            "fornecedor_id": dados.fornecedor_id,
-            "numero_frutos_analisados": dados.numero_frutos_analisados,
-            "defeitos_leves": dados.defeitos_leves,
-            "defeitos_criticos": dados.defeitos_criticos,
-            "materia_seca": dados.materia_seca,
-            "peso_pu": dados.peso_pu,
-            "data_analise": dados.data_analise,
-        },
+        params,
     ).scalar()
     return int(inserted)
 
@@ -794,6 +866,7 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
                             "tipo_registro": reg.tipo_registro,
                             "status": "erro",
                             "error_message": erro_cliente_seguro(exc),
+                            "error_detail": erro_completo[:240],
                         }
                     )
     except Exception as exc:
