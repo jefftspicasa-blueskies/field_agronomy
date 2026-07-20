@@ -61,6 +61,8 @@ const amostrasAddBtn = document.getElementById("amostrasAdd");
 const amostrasDelBtn = document.getElementById("amostrasDel");
 const coletaImagensInput = document.getElementById("coletaImagens");
 const imagensResumo = document.getElementById("imagensResumo");
+const analiseDetalheVoltarBtn = document.getElementById("analiseDetalheVoltar");
+const analiseDetalheContent = document.getElementById("analiseDetalheContent");
 
 const state = {
   editAnaliseId: null,
@@ -816,7 +818,6 @@ async function renderAnalisesTable() {
   await renderHistorico(TIPO_ANALISE, analisesBody, "analiseBusca", (r, fornecedores) => {
     const p = r.payload_json || {};
     const fornecedor = fornecedores.get(Number(p.fornecedor_id)) || `ID ${p.fornecedor_id || "-"}`;
-    const canEdit = r.status_sync !== "enviado";
     return `
       <tr>
         <td>${escapeHtml(p.data_analise || "-")}</td>
@@ -825,12 +826,172 @@ async function renderAnalisesTable() {
         <td class="col-optional">${escapeHtml(p.variedade || "-")}</td>
         <td>${toStatusPill(r.status_sync)}</td>
         <td class="actions">
-          <button class="ghost" data-ac="edit-analise" data-id="${escapeHtml(r.id_local)}" type="button" ${canEdit ? "" : "disabled"}>Edit</button>
+          <button class="ghost" data-ac="view-analise" data-id="${escapeHtml(r.id_local)}" type="button">View</button>
+          <button class="ghost" data-ac="pdf-analise" data-id="${escapeHtml(r.id_local)}" type="button">PDF</button>
+          <button class="ghost" data-ac="edit-analise" data-id="${escapeHtml(r.id_local)}" type="button">Edit</button>
           <button class="ghost" data-ac="del-registro" data-id="${escapeHtml(r.id_local)}" type="button">Delete</button>
         </td>
       </tr>
     `;
   });
+}
+
+function buildAnaliseReportHtml(rec, fornecedorNome) {
+  const p = rec.payload_json || {};
+
+  let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
+  if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
+    itens = p.amostras_pesos_gramas.map((peso) => ({
+      peso_pu: peso,
+      maturacao: p.maturacao ?? "",
+      materia_seca: p.materia_seca ?? "",
+    }));
+  }
+
+  const rows = itens.map((item, idx) => {
+    const peso = Number(item?.peso_pu);
+    const maturacao = Number(item?.maturacao);
+    const materiaSeca = Number(item?.materia_seca);
+    return `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${Number.isFinite(peso) ? peso.toFixed(3) : "-"}</td>
+        <td>${Number.isFinite(maturacao) ? maturacao.toFixed(2) : "-"}</td>
+        <td>${Number.isFinite(materiaSeca) ? materiaSeca.toFixed(4) : "-"}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <!doctype html>
+    <html lang="en-US">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Analysis Report</title>
+      <style>
+        body { font-family: Arial, sans-serif; color: #102133; margin: 24px; }
+        h1 { margin: 0 0 12px 0; }
+        .meta { margin: 0 0 18px 0; line-height: 1.6; }
+        .meta b { display: inline-block; min-width: 180px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+        th, td { border: 1px solid #cfd8e3; padding: 8px; text-align: left; font-size: 13px; }
+        th { background: #eef4fb; }
+        .section-title { margin-top: 20px; font-size: 16px; font-weight: 700; }
+        .small { color: #4e6478; font-size: 12px; }
+        @media print { body { margin: 10mm; } }
+      </style>
+    </head>
+    <body>
+      <h1>Analysis Report</h1>
+      <p class="small">Local ID: ${escapeHtml(rec.id_local || "-")}</p>
+      <div class="meta">
+        <div><b>Date:</b> ${escapeHtml(p.data_analise || "-")}</div>
+        <div><b>Supplier:</b> ${escapeHtml(fornecedorNome || "-")}</div>
+        <div><b>Plot:</b> ${escapeHtml(p.talhao || "-")}</div>
+        <div><b>Variety:</b> ${escapeHtml(p.variedade || "-")}</div>
+        <div><b>Average Weight (g):</b> ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
+        <div><b>Average Ripeness:</b> ${Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"}</div>
+        <div><b>Average Dry Matter (%):</b> ${Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"}</div>
+        <div><b>Fruit Count:</b> ${escapeHtml(p.numero_frutos_analisados ?? "-")}</div>
+        <div><b>Minor Defects:</b> ${escapeHtml(p.defeitos_leves ?? 0)}</div>
+        <div><b>Critical Defects:</b> ${escapeHtml(p.defeitos_criticos ?? 0)}</div>
+        <div><b>Notes:</b> ${escapeHtml(p.observacoes || "-")}</div>
+      </div>
+
+      <div class="section-title">Collected Samples</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Weight (g)</th>
+            <th>Ripeness</th>
+            <th>Dry Matter (%)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="4">No sample items found.</td></tr>'}
+        </tbody>
+      </table>
+    </body>
+    </html>
+  `;
+}
+
+function openAnaliseReport(rec, fornecedorNome, autoPrint = false) {
+  const html = buildAnaliseReportHtml(rec, fornecedorNome);
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) {
+    feedback("Could not open report window. Allow pop-ups for this site.", true);
+    return;
+  }
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+
+  if (autoPrint) {
+    win.addEventListener("load", () => {
+      win.focus();
+      win.print();
+    });
+  }
+}
+
+function renderAnaliseDetailView(rec, fornecedorNome) {
+  if (!analiseDetalheContent) return;
+  const p = rec.payload_json || {};
+
+  let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
+  if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
+    itens = p.amostras_pesos_gramas.map((peso) => ({
+      peso_pu: peso,
+      maturacao: p.maturacao ?? "",
+      materia_seca: p.materia_seca ?? "",
+    }));
+  }
+
+  const rows = itens.map((item, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td>${Number.isFinite(Number(item?.peso_pu)) ? Number(item.peso_pu).toFixed(3) : "-"}</td>
+      <td>${Number.isFinite(Number(item?.maturacao)) ? Number(item.maturacao).toFixed(2) : "-"}</td>
+      <td>${Number.isFinite(Number(item?.materia_seca)) ? Number(item.materia_seca).toFixed(4) : "-"}</td>
+    </tr>
+  `).join("");
+
+  analiseDetalheContent.innerHTML = `
+    <div class="ux-card" style="margin-bottom:12px;">
+      <div><strong>Date:</strong> ${escapeHtml(p.data_analise || "-")}</div>
+      <div><strong>Supplier:</strong> ${escapeHtml(fornecedorNome || "-")}</div>
+      <div><strong>Plot:</strong> ${escapeHtml(p.talhao || "-")}</div>
+      <div><strong>Variety:</strong> ${escapeHtml(p.variedade || "-")}</div>
+      <div><strong>Average Weight (g):</strong> ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
+      <div><strong>Average Ripeness:</strong> ${Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"}</div>
+      <div><strong>Average Dry Matter (%):</strong> ${Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"}</div>
+      <div><strong>Fruit Count:</strong> ${escapeHtml(p.numero_frutos_analisados ?? "-")}</div>
+      <div><strong>Minor Defects:</strong> ${escapeHtml(p.defeitos_leves ?? 0)}</div>
+      <div><strong>Critical Defects:</strong> ${escapeHtml(p.defeitos_criticos ?? 0)}</div>
+      <div><strong>Notes:</strong> ${escapeHtml(p.observacoes || "-")}</div>
+    </div>
+    <div class="table-wrap">
+      <table class="analises-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Weight (g)</th>
+            <th>Ripeness</th>
+            <th>Dry Matter (%)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="4" class="muted">No sample items found.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  showView("view-analise-detalhe");
 }
 
 async function renderInspecoesTable() {
@@ -1049,6 +1210,10 @@ async function setupActions() {
     showView("view-analises");
   });
 
+  analiseDetalheVoltarBtn?.addEventListener("click", () => {
+    showView("view-analises");
+  });
+
   document.getElementById("inspecaoNovo")?.addEventListener("click", () => {
     resetInspecaoForm();
     showView("view-inspecao-form");
@@ -1212,6 +1377,20 @@ async function setupActions() {
       await deleteQueueRecord(id);
       await refreshAll();
       feedback("Record deleted locally.");
+      return;
+    }
+
+    if (ac === "view-analise") {
+      const fornecedores = await getFornecedorMap();
+      const nomeFornecedor = fornecedores.get(Number(rec?.payload_json?.fornecedor_id)) || `ID ${rec?.payload_json?.fornecedor_id || "-"}`;
+      renderAnaliseDetailView(rec, nomeFornecedor);
+      return;
+    }
+
+    if (ac === "pdf-analise") {
+      const fornecedores = await getFornecedorMap();
+      const nomeFornecedor = fornecedores.get(Number(rec?.payload_json?.fornecedor_id)) || `ID ${rec?.payload_json?.fornecedor_id || "-"}`;
+      openAnaliseReport(rec, nomeFornecedor, true);
       return;
     }
 
