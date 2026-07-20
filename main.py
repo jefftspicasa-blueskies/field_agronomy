@@ -49,20 +49,23 @@ PWA_DIR = os.path.join(ROOT_DIR, "agronomia_offline_pwa")
 API_KEY_ENV_VAR = "AGRONOMIA_SYNC_API_KEY"
 
 
+class AmostraItem(BaseModel):
+    peso_gramas: float = Field(ge=0)
+    maturacao: Optional[int] = Field(default=None, ge=1, le=5)
+    materia_seca: Optional[float] = Field(default=None, ge=0, le=100)
+
+
 class AnaliseDados(BaseModel):
     fornecedor_id: int
     talhao: Optional[str] = Field(default=None, max_length=80)
     variedade: Optional[str] = Field(default=None, max_length=80)
     data_analise: Optional[date] = None
-    maturacao: Optional[int] = Field(default=None, ge=1, le=5)
-    materia_seca: float = Field(ge=0, le=30)
-    brix: Optional[float] = Field(default=None, ge=0, le=30)
-    ph: Optional[float] = Field(default=None, ge=0, le=14)
     peso_pu: Optional[float] = Field(default=None, ge=0)
-    numero_frutos_analisados: int = Field(ge=1)
+    numero_frutos_analisados: Optional[int] = Field(default=None, ge=0)
     defeitos_leves: int = Field(default=0, ge=0)
     defeitos_criticos: int = Field(default=0, ge=0)
     observacoes: Optional[str] = Field(default=None, max_length=1200)
+    amostras: Optional[List[AmostraItem]] = None
 
 
 class InspecaoDados(BaseModel):
@@ -409,6 +412,10 @@ def upsert_sync_erro(conn, payload: SyncLoteIn, reg: RegistroIn, payload_json: D
 
 
 def inserir_analise(conn, dados: AnaliseDados) -> int:
+    amostras = dados.amostras or []
+    materia_seca_vals = [a.materia_seca for a in amostras if a.materia_seca is not None]
+    materia_seca_media = (sum(materia_seca_vals) / len(materia_seca_vals)) if materia_seca_vals else None
+
     inserted = conn.execute(
         text(
             """
@@ -423,7 +430,7 @@ def inserir_analise(conn, dados: AnaliseDados) -> int:
             "numero_frutos_analisados": dados.numero_frutos_analisados,
             "defeitos_leves": dados.defeitos_leves,
             "defeitos_criticos": dados.defeitos_criticos,
-            "materia_seca": dados.materia_seca,
+            "materia_seca": materia_seca_media,
             "peso_pu": dados.peso_pu,
             "data_analise": dados.data_analise,
         },
