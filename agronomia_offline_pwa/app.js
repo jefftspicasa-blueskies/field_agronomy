@@ -938,6 +938,124 @@ function openAnaliseReport(rec, fornecedorNome, autoPrint = false) {
   }
 }
 
+function escapePdfText(value) {
+  return String(value ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/[\r\n\t]/g, " ");
+}
+
+function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
+  const p = rec.payload_json || {};
+
+  let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
+  if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
+    itens = p.amostras_pesos_gramas.map((peso) => ({
+      peso_pu: peso,
+      maturacao: p.maturacao ?? "",
+      materia_seca: p.materia_seca ?? "",
+    }));
+  }
+
+  const lines = [
+    "Analysis Report",
+    "",
+    `Local ID: ${rec.id_local || "-"}`,
+    `Date: ${p.data_analise || "-"}`,
+    `Supplier: ${fornecedorNome || "-"}`,
+    `Plot: ${p.talhao || "-"}`,
+    `Variety: ${p.variedade || "-"}`,
+    `Average Weight (g): ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}`,
+    `Average Ripeness: ${Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"}`,
+    `Average Dry Matter (%): ${Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"}`,
+    `Fruit Count: ${p.numero_frutos_analisados ?? "-"}`,
+    `Minor Defects: ${p.defeitos_leves ?? 0}`,
+    `Critical Defects: ${p.defeitos_criticos ?? 0}`,
+    `Notes: ${p.observacoes || "-"}`,
+    "",
+    "Collected Samples",
+    "Item | Weight (g) | Ripeness | Dry Matter (%)",
+  ];
+
+  for (let idx = 0; idx < itens.length; idx += 1) {
+    const item = itens[idx] || {};
+    const peso = Number(item.peso_pu);
+    const ripeness = Number(item.maturacao);
+    const dry = Number(item.materia_seca);
+    lines.push(
+      `${idx + 1} | ${Number.isFinite(peso) ? peso.toFixed(3) : "-"} | ${Number.isFinite(ripeness) ? ripeness.toFixed(2) : "-"} | ${Number.isFinite(dry) ? dry.toFixed(4) : "-"}`
+    );
+  }
+
+  const maxLines = 52;
+  const safeLines = lines.slice(0, maxLines);
+  if (lines.length > maxLines) {
+    safeLines[safeLines.length - 1] = "... Report truncated: too many sample lines.";
+  }
+
+  const content = [];
+  content.push("BT");
+  content.push("/F1 11 Tf");
+  content.push("50 810 Td");
+  for (let i = 0; i < safeLines.length; i += 1) {
+    const line = escapePdfText(safeLines[i]).slice(0, 120);
+    content.push(`(${line}) Tj`);
+    if (i < safeLines.length - 1) content.push("0 -14 Td");
+  }
+  content.push("ET");
+  const contentStream = `${content.join("\n")}\n`;
+  const contentLength = contentStream.length;
+
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
+    `4 0 obj\n<< /Length ${contentLength} >>\nstream\n${contentStream}endstream\nendobj\n`,
+    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+  ];
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const obj of objects) {
+    offsets.push(pdf.length);
+    pdf += obj;
+  }
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (let i = 1; i <= objects.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += "trailer\n";
+  pdf += `<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
+  pdf += "startxref\n";
+  pdf += `${xrefOffset}\n`;
+  pdf += "%%EOF";
+
+  const bytes = new Uint8Array(pdf.length);
+  for (let i = 0; i < pdf.length; i += 1) {
+    bytes[i] = pdf.charCodeAt(i) & 0xff;
+  }
+  return bytes;
+}
+
+function downloadAnaliseReport(rec, fornecedorNome) {
+  const pdfBytes = buildAnaliseReportPdfBytes(rec, fornecedorNome);
+  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const safeId = String(rec?.id_local || "analysis").replace(/[^a-z0-9_-]/gi, "").slice(0, 12);
+  const datePart = String(rec?.payload_json?.data_analise || new Date().toISOString().slice(0, 10));
+  a.href = url;
+  a.download = `analysis_report_${datePart}_${safeId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function renderAnaliseDetailView(rec, fornecedorNome) {
   if (!analiseDetalheContent) return;
   const p = rec.payload_json || {};
@@ -1390,7 +1508,7 @@ async function setupActions() {
     if (ac === "pdf-analise") {
       const fornecedores = await getFornecedorMap();
       const nomeFornecedor = fornecedores.get(Number(rec?.payload_json?.fornecedor_id)) || `ID ${rec?.payload_json?.fornecedor_id || "-"}`;
-      openAnaliseReport(rec, nomeFornecedor, true);
+      downloadAnaliseReport(rec, nomeFornecedor);
       return;
     }
 
