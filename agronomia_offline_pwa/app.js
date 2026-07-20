@@ -311,10 +311,22 @@ function aplicarMascaraPeso(rawValue) {
 }
 
 function parsePesoMascara(value) {
-  const normalized = String(value ?? "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .replace(/[^0-9.-]/g, "");
+  const raw = String(value ?? "").trim();
+  if (!raw) return NaN;
+
+  const commaIndex = raw.lastIndexOf(",");
+  const dotIndex = raw.lastIndexOf(".");
+
+  let normalized = raw;
+  if (commaIndex > dotIndex) {
+    // pt-BR style: 1.234,567
+    normalized = raw.replace(/\./g, "").replace(",", ".");
+  } else if (dotIndex > commaIndex) {
+    // en-US style: 1,234.567
+    normalized = raw.replace(/,/g, "");
+  }
+
+  normalized = normalized.replace(/[^0-9.-]/g, "");
   const n = Number(normalized);
   return Number.isFinite(n) ? n : NaN;
 }
