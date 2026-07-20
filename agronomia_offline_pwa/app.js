@@ -946,6 +946,71 @@ function escapePdfText(value) {
     .replace(/[\r\n\t]/g, " ");
 }
 
+function base64DataUrlToBytes(dataUrl) {
+  const raw = String(dataUrl || "");
+  const comma = raw.indexOf(",");
+  if (comma < 0) return null;
+  const base64 = raw.slice(comma + 1);
+  try {
+    const bin = atob(base64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+function getJpegDimensions(bytes) {
+  if (!bytes || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return null;
+  }
+
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = bytes[offset + 1];
+    offset += 2;
+
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (offset + 1 >= bytes.length) break;
+
+    const blockLen = (bytes[offset] << 8) + bytes[offset + 1];
+    if (!blockLen || offset + blockLen > bytes.length) break;
+
+    const isSof = (
+      marker === 0xc0 || marker === 0xc1 || marker === 0xc2 || marker === 0xc3 ||
+      marker === 0xc5 || marker === 0xc6 || marker === 0xc7 || marker === 0xc9 ||
+      marker === 0xca || marker === 0xcb || marker === 0xcd || marker === 0xce || marker === 0xcf
+    );
+
+    if (isSof && blockLen >= 7) {
+      const height = (bytes[offset + 3] << 8) + bytes[offset + 4];
+      const width = (bytes[offset + 5] << 8) + bytes[offset + 6];
+      if (width > 0 && height > 0) return { width, height };
+    }
+
+    offset += blockLen;
+  }
+
+  return null;
+}
+
+function concatUint8Arrays(parts) {
+  const total = parts.reduce((acc, p) => acc + p.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const p of parts) {
+    out.set(p, pos);
+    pos += p.length;
+  }
+  return out;
+}
+
 function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const p = rec.payload_json || {};
 
@@ -957,6 +1022,26 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       materia_seca: p.materia_seca ?? "",
     }));
   }
+
+  const imagens = (Array.isArray(p.imagens_coleta) ? p.imagens_coleta : [])
+    .map((img) => ({
+      nome: String(img?.nome || "image"),
+      data_url: String(img?.data_url || ""),
+    }))
+    .filter((img) => img.data_url.startsWith("data:image/jpeg") || img.data_url.startsWith("data:image/jpg"))
+    .slice(0, 3)
+    .map((img) => {
+      const bytes = base64DataUrlToBytes(img.data_url);
+      const dim = bytes ? getJpegDimensions(bytes) : null;
+      if (!bytes || !dim) return null;
+      return {
+        nome: img.nome,
+        bytes,
+        width: dim.width,
+        height: dim.height,
+      };
+    })
+    .filter(Boolean);
 
   const content = [];
   const pushText = (fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
@@ -1076,44 +1161,106 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     pushText("/F1", 9, 50, y0 - rowH * (totalRows + 1), `Showing first ${maxRows} of ${itens.length} samples.`, [0.28, 0.32, 0.36]);
   }
 
+  // Images section
+  const imageTitleY = y0 - rowH * (totalRows + 2);
+  if (imagens.length) {
+    pushText("/F2", 12, 50, imageTitleY, "Collected Images", [0.1, 0.16, 0.24]);
+
+    const startY = imageTitleY - 10;
+    const boxes = [
+      { x: 50, w: 160, h: 100 },
+      { x: 220, w: 160, h: 100 },
+      { x: 390, w: 160, h: 100 },
+    ];
+
+    for (let i = 0; i < imagens.length && i < boxes.length; i += 1) {
+      const box = boxes[i];
+      const img = imagens[i];
+      const ratio = img.width / img.height;
+      let drawW = box.w;
+      let drawH = drawW / ratio;
+      if (drawH > box.h) {
+        drawH = box.h;
+        drawW = drawH * ratio;
+      }
+
+      const x = box.x + (box.w - drawW) / 2;
+      const yImg = startY - drawH;
+
+      // frame
+      content.push("0.82 0.87 0.93 RG");
+      content.push("0.6 w");
+      content.push(`${box.x} ${startY - box.h} ${box.w} ${box.h} re S`);
+
+      // image
+      content.push("q");
+      content.push(`${drawW} 0 0 ${drawH} ${x} ${yImg} cm`);
+      content.push(`/Im${i + 1} Do`);
+      content.push("Q");
+
+      pushText("/F1", 8, box.x, startY - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
+    }
+  }
+
   const contentStream = `${content.join("\n")}\n`;
-  const contentLength = contentStream.length;
+  const encoder = new TextEncoder();
+  const contentBytes = encoder.encode(contentStream);
+  const contentLength = contentBytes.length;
 
-  const objects = [
-    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
-    `4 0 obj\n<< /Length ${contentLength} >>\nstream\n${contentStream}endstream\nendobj\n`,
-    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-    "6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n",
-  ];
+  const xObjectsDict = imagens.length
+    ? `/XObject << ${imagens.map((_, idx) => `/Im${idx + 1} ${7 + idx} 0 R`).join(" ")} >>`
+    : "";
 
-  objects[2] = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>\nendobj\n";
+  const obj1 = encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  const obj2 = encoder.encode("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+  const obj3 = encoder.encode(
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> ${xObjectsDict} >> /Contents 4 0 R >>\nendobj\n`
+  );
+  const obj4 = concatUint8Arrays([
+    encoder.encode(`4 0 obj\n<< /Length ${contentLength} >>\nstream\n`),
+    contentBytes,
+    encoder.encode("endstream\nendobj\n"),
+  ]);
+  const obj5 = encoder.encode("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+  const obj6 = encoder.encode("6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
 
-  let pdf = "%PDF-1.4\n";
+  const imageObjects = imagens.map((img, idx) =>
+    concatUint8Arrays([
+      encoder.encode(
+        `${7 + idx} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\nstream\n`
+      ),
+      img.bytes,
+      encoder.encode("\nendstream\nendobj\n"),
+    ])
+  );
+
+  const objects = [obj1, obj2, obj3, obj4, obj5, obj6, ...imageObjects];
+  const header = encoder.encode("%PDF-1.4\n");
+
+  const parts = [header];
   const offsets = [0];
-  for (const obj of objects) {
-    offsets.push(pdf.length);
-    pdf += obj;
+  let bytePos = header.length;
+  for (const objBytes of objects) {
+    offsets.push(bytePos);
+    parts.push(objBytes);
+    bytePos += objBytes.length;
   }
 
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += "0000000000 65535 f \n";
+  const xrefOffset = bytePos;
+  const xrefLines = [];
+  xrefLines.push(`xref\n0 ${objects.length + 1}\n`);
+  xrefLines.push("0000000000 65535 f \n");
   for (let i = 1; i <= objects.length; i += 1) {
-    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+    xrefLines.push(`${String(offsets[i]).padStart(10, "0")} 00000 n \n`);
   }
-  pdf += "trailer\n";
-  pdf += `<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
-  pdf += "startxref\n";
-  pdf += `${xrefOffset}\n`;
-  pdf += "%%EOF";
+  xrefLines.push("trailer\n");
+  xrefLines.push(`<< /Size ${objects.length + 1} /Root 1 0 R >>\n`);
+  xrefLines.push("startxref\n");
+  xrefLines.push(`${xrefOffset}\n`);
+  xrefLines.push("%%EOF");
 
-  const bytes = new Uint8Array(pdf.length);
-  for (let i = 0; i < pdf.length; i += 1) {
-    bytes[i] = pdf.charCodeAt(i) & 0xff;
-  }
-  return bytes;
+  parts.push(encoder.encode(xrefLines.join("")));
+  return concatUint8Arrays(parts);
 }
 
 function downloadAnaliseReport(rec, fornecedorNome) {
@@ -1153,6 +1300,25 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
     </tr>
   `).join("");
 
+  const imagens = (Array.isArray(p.imagens_coleta) ? p.imagens_coleta : [])
+    .filter((img) => String(img?.data_url || "").startsWith("data:image/"));
+
+  const imagensHtml = imagens.length
+    ? `
+      <div style="margin-top:14px;">
+        <h4 style="margin:0 0 8px 0; color:#173f63;">Collected Images</h4>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+          ${imagens.map((img, idx) => `
+            <figure style="margin:0; border:1px solid #d7e7f7; border-radius:10px; padding:8px; background:#fff;">
+              <img src="${escapeHtml(img.data_url || "")}" alt="Image ${idx + 1}" style="width:100%; height:140px; object-fit:cover; border-radius:8px;" />
+              <figcaption style="font-size:12px; color:#3f5f79; margin-top:6px;">${escapeHtml(img.nome || `Image ${idx + 1}`)}</figcaption>
+            </figure>
+          `).join("")}
+        </div>
+      </div>
+    `
+    : '<div class="muted" style="margin-top:12px;">No images attached.</div>';
+
   analiseDetalheContent.innerHTML = `
     <div class="ux-card" style="margin-bottom:12px;">
       <div><strong>Date:</strong> ${escapeHtml(p.data_analise || "-")}</div>
@@ -1182,6 +1348,7 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
         </tbody>
       </table>
     </div>
+    ${imagensHtml}
   `;
 
   showView("view-analise-detalhe");
