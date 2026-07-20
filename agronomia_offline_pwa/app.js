@@ -1278,6 +1278,27 @@ function downloadAnaliseReport(rec, fornecedorNome) {
   URL.revokeObjectURL(url);
 }
 
+function openAnaliseImagePopup(imageSrc, imageAlt = "Collected image") {
+  const popup = document.getElementById("analiseImagemPopup");
+  const popupImg = document.getElementById("analiseImagemPopupImg");
+  if (!popup || !popupImg || !imageSrc) return;
+
+  popupImg.src = imageSrc;
+  popupImg.alt = imageAlt;
+  popup.classList.add("open");
+  popup.setAttribute("aria-hidden", "false");
+}
+
+function closeAnaliseImagePopup() {
+  const popup = document.getElementById("analiseImagemPopup");
+  const popupImg = document.getElementById("analiseImagemPopupImg");
+  if (!popup || !popupImg) return;
+
+  popup.classList.remove("open");
+  popup.setAttribute("aria-hidden", "true");
+  popupImg.src = "";
+}
+
 function renderAnaliseDetailView(rec, fornecedorNome) {
   if (!analiseDetalheContent) return;
   const p = rec.payload_json || {};
@@ -1305,13 +1326,15 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
 
   const imagensHtml = imagens.length
     ? `
-      <div style="margin-top:14px;">
-        <h4 style="margin:0 0 8px 0; color:#173f63;">Collected Images</h4>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px;">
+      <div class="analise-images-block">
+        <h4 class="analise-images-title">Collected Images</h4>
+        <div class="analise-images-grid">
           ${imagens.map((img, idx) => `
-            <figure style="margin:0; border:1px solid #d7e7f7; border-radius:10px; padding:8px; background:#fff;">
-              <img src="${escapeHtml(img.data_url || "")}" alt="Image ${idx + 1}" style="width:100%; height:140px; object-fit:cover; border-radius:8px;" />
-              <figcaption style="font-size:12px; color:#3f5f79; margin-top:6px;">${escapeHtml(img.nome || `Image ${idx + 1}`)}</figcaption>
+            <figure class="analise-image-card">
+              <button type="button" class="analise-image-thumb" data-ac="open-image-popup" aria-label="Expand image ${idx + 1}">
+                <img src="${escapeHtml(img.data_url || "")}" alt="Image ${idx + 1}" />
+              </button>
+              <figcaption>${escapeHtml(img.nome || `Image ${idx + 1}`)}</figcaption>
             </figure>
           `).join("")}
         </div>
@@ -1349,6 +1372,12 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
       </table>
     </div>
     ${imagensHtml}
+    <div id="analiseImagemPopup" class="analise-image-popup" aria-hidden="true">
+      <div class="analise-image-popup-content" role="dialog" aria-modal="true" aria-label="Expanded image preview">
+        <button type="button" class="analise-image-popup-close" data-ac="close-image-popup" aria-label="Close image preview">&times;</button>
+        <img id="analiseImagemPopupImg" src="" alt="Expanded collected image" />
+      </div>
+    </div>
   `;
 
   showView("view-analise-detalhe");
@@ -1571,7 +1600,37 @@ async function setupActions() {
   });
 
   analiseDetalheVoltarBtn?.addEventListener("click", () => {
+    closeAnaliseImagePopup();
     showView("view-analises");
+  });
+
+  analiseDetalheContent?.addEventListener("click", (e) => {
+    const target = e.target;
+    const openBtn = target.closest?.("button[data-ac='open-image-popup']");
+    if (openBtn) {
+      const img = openBtn.querySelector("img");
+      if (img) {
+        openAnaliseImagePopup(img.getAttribute("src"), img.getAttribute("alt") || "Collected image");
+      }
+      return;
+    }
+
+    const closeBtn = target.closest?.("button[data-ac='close-image-popup']");
+    if (closeBtn) {
+      closeAnaliseImagePopup();
+      return;
+    }
+
+    const popup = target.closest?.("#analiseImagemPopup");
+    if (popup && target === popup) {
+      closeAnaliseImagePopup();
+    }
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeAnaliseImagePopup();
+    }
   });
 
   document.getElementById("inspecaoNovo")?.addEventListener("click", () => {
