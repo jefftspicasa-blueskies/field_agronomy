@@ -959,9 +959,10 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   }
 
   const content = [];
-  const pushText = (fontAlias, size, x, y, value) => {
+  const pushText = (fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
     const txt = escapePdfText(value).slice(0, 140);
     content.push("BT");
+    content.push(`${color[0]} ${color[1]} ${color[2]} rg`);
     content.push(`${fontAlias} ${size} Tf`);
     content.push(`1 0 0 1 ${x} ${y} Tm`);
     content.push(`(${txt}) Tj`);
@@ -972,12 +973,12 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   content.push("0.09 0.36 0.65 rg");
   content.push("40 785 515 35 re f");
   content.push("1 1 1 rg");
-  pushText("/F2", 18, 52, 798, "Analysis Report");
-  pushText("/F1", 10, 400, 798, `ID: ${rec.id_local || "-"}`);
+  pushText("/F2", 18, 52, 798, "Analysis Report", [1, 1, 1]);
+  pushText("/F1", 10, 400, 798, `ID: ${rec.id_local || "-"}`, [1, 1, 1]);
 
   // Summary title
   content.push("0.12 0.2 0.3 rg");
-  pushText("/F2", 12, 50, 765, "Summary");
+  pushText("/F2", 12, 50, 765, "Summary", [0.1, 0.16, 0.24]);
 
   const summary = [
     ["Date", p.data_analise || "-"],
@@ -994,24 +995,24 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
 
   let y = 748;
   for (const [label, value] of summary) {
-    pushText("/F2", 10, 50, y, `${label}:`);
-    pushText("/F1", 10, 210, y, String(value));
+    pushText("/F2", 10, 50, y, `${label}:`, [0.1, 0.16, 0.24]);
+    pushText("/F1", 10, 210, y, String(value), [0.08, 0.12, 0.18]);
     y -= 16;
   }
 
-  pushText("/F2", 10, 50, y, "Notes:");
+  pushText("/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
   const notes = String(p.observacoes || "-");
   const notesChunks = notes.match(/.{1,88}/g) || ["-"];
   let notesY = y;
   for (const chunk of notesChunks.slice(0, 2)) {
-    pushText("/F1", 10, 210, notesY, chunk);
+    pushText("/F1", 10, 210, notesY, chunk, [0.08, 0.12, 0.18]);
     notesY -= 14;
   }
 
   // Samples section title
   const tableTop = notesY - 22;
   content.push("0.12 0.2 0.3 rg");
-  pushText("/F2", 12, 50, tableTop + 8, "Collected Samples");
+  pushText("/F2", 12, 50, tableTop + 8, "Collected Samples", [0.1, 0.16, 0.24]);
 
   // Table layout
   const x0 = 50;
@@ -1046,7 +1047,7 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const headers = ["Item", "Weight (g)", "Ripeness", "Dry Matter (%)"];
   let hx = x0 + 6;
   for (let i = 0; i < headers.length; i += 1) {
-    pushText("/F2", 10, hx, y0 - 13, headers[i]);
+    pushText("/F2", 10, hx, y0 - 13, headers[i], [0.08, 0.12, 0.18]);
     hx += colW[i];
   }
 
@@ -1066,13 +1067,13 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     let cx = x0 + 6;
     const cy = y0 - rowH * (i + 1) - 13;
     for (let c = 0; c < rowVals.length; c += 1) {
-      pushText("/F1", 10, cx, cy, rowVals[c]);
+      pushText("/F1", 10, cx, cy, rowVals[c], [0.06, 0.08, 0.1]);
       cx += colW[c];
     }
   }
 
   if (itens.length > maxRows) {
-    pushText("/F1", 9, 50, y0 - rowH * (totalRows + 1), `Showing first ${maxRows} of ${itens.length} samples.`);
+    pushText("/F1", 9, 50, y0 - rowH * (totalRows + 1), `Showing first ${maxRows} of ${itens.length} samples.`, [0.28, 0.32, 0.36]);
   }
 
   const contentStream = `${content.join("\n")}\n`;
