@@ -16,7 +16,7 @@ const TIPO_ANALISE = "analise_campo";
 const TIPO_INSPECAO = "inspecao_talhao";
 const TIPO_OCORRENCIA = "ocorrencia_campo";
 
-const AMOSTRAS_POR_PAGINA = 5;
+const AMOSTRAS_POR_PAGINA = 1;
 const AMOSTRA_DECIMAIS = 3;
 
 const pesoPtFormatter = new Intl.NumberFormat("en-US", {
