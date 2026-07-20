@@ -55,6 +55,7 @@ const kpiEnviados = document.getElementById("kpiEnviados");
 const amostrasPesosContainer = document.getElementById("amostrasPesos");
 const amostrasResumo = document.getElementById("amostrasResumo");
 const amostrasMeta = document.getElementById("amostrasMeta");
+const amostrasProgressBar = document.getElementById("amostrasProgressBar");
 const amostrasPrevBtn = document.getElementById("amostrasPrev");
 const amostrasNextBtn = document.getElementById("amostrasNext");
 const amostrasAddBtn = document.getElementById("amostrasAdd");
@@ -400,7 +401,12 @@ function updateAmostrasResumoAndMedia() {
   });
 
   if (amostrasResumo) {
-    amostrasResumo.textContent = `${validas.length}/${total} completed`;
+    amostrasResumo.textContent = `Completed: ${validas.length} of ${total}`;
+  }
+
+  if (amostrasProgressBar) {
+    const percent = total > 0 ? (validas.length / total) * 100 : 0;
+    amostrasProgressBar.style.width = `${Math.max(0, Math.min(100, percent)).toFixed(1)}%`;
   }
 
   const pesoInput = getColetaPesoInput();
@@ -510,7 +516,7 @@ function renderAmostrasInputs(initialItems = null) {
   });
 
   if (amostrasMeta) {
-    amostrasMeta.textContent = `Page ${state.amostrasPaginaAtual} of ${totalPaginas}`;
+    amostrasMeta.textContent = `Item ${state.amostrasPaginaAtual} of ${totalPaginas}`;
   }
   if (amostrasPrevBtn) amostrasPrevBtn.disabled = state.amostrasPaginaAtual <= 1;
   if (amostrasNextBtn) amostrasNextBtn.disabled = state.amostrasPaginaAtual >= totalPaginas;

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0B5FA5" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="stylesheet" href="./styles.css?v=19" />
+  <link rel="stylesheet" href="./styles.css?v=20" />
   <title>Blue Skies Field Offline</title>
 </head>
 <body>
@@ -180,16 +180,30 @@
           </label>
           <div class="full amostras-box">
             <div class="amostras-head">
-              <strong>Sample items (Weight + Ripeness + Dry matter)</strong>
-              <span id="amostrasResumo">0/1 completed</span>
+              <div class="amostras-head-main">
+                <strong>Sample items (Weight + Ripeness + Dry matter)</strong>
+                <small>Fill one item at a time to avoid mistakes.</small>
+              </div>
+              <span id="amostrasResumo" class="amostras-resumo-badge">Completed: 0 of 1</span>
             </div>
-            <div class="amostras-nav">
-              <button id="amostrasPrev" type="button" class="ghost">Previous page</button>
-              <span id="amostrasMeta">Page 1 of 1</span>
-              <button id="amostrasNext" type="button" class="ghost">Next page</button>
+
+            <div class="amostras-progress-wrap" aria-hidden="true">
+              <div class="amostras-progress-track">
+                <div id="amostrasProgressBar" class="amostras-progress-fill"></div>
+              </div>
+            </div>
+
+            <div class="amostras-nav amostras-nav-primary">
+              <button id="amostrasPrev" type="button" class="ghost">Previous</button>
+              <span id="amostrasMeta">Item 1 of 1</span>
+              <button id="amostrasNext" type="button" class="ghost">Next</button>
+            </div>
+
+            <div class="amostras-nav amostras-nav-secondary">
               <button id="amostrasAdd" type="button">Add item</button>
               <button id="amostrasDel" type="button" class="ghost">Remove last</button>
             </div>
+
             <div id="amostrasPesos" class="amostras-grid" aria-label="Sample items"></div>
           </div>
           <label class="full">Collection images (optional)
@@ -446,6 +460,6 @@
     </section>
   </main>
 
-  <script type="module" src="./app.js?v=19"></script>
+  <script type="module" src="./app.js?v=20"></script>
 </body>
 </html>
