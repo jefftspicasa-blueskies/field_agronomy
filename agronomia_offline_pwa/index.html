@@ -161,22 +161,16 @@
             <input type="date" name="data_analise" required />
           </label>
           <label>Ripeness (1-5)
-            <input type="number" name="maturacao" min="1" max="5" step="1" value="3" />
+            <input type="number" name="maturacao" min="1" max="5" step="0.01" readonly required />
           </label>
           <label>Dry matter (%)
-            <input type="number" name="materia_seca" min="0" max="30" step="0.01" required />
-          </label>
-          <label>Brix
-            <input type="number" name="brix" min="0" max="30" step="0.1" />
-          </label>
-          <label>pH
-            <input type="number" name="ph" min="0" max="14" step="0.01" />
+            <input type="number" name="materia_seca" min="0" max="30" step="0.0001" readonly required />
           </label>
           <label>Average fruit weight (g)
             <input type="number" name="peso_pu" min="0" step="0.0001" readonly required />
           </label>
           <label>Fruit count analyzed
-            <input type="number" name="numero_frutos_analisados" min="30" max="30" step="1" value="30" readonly required />
+            <input type="number" name="numero_frutos_analisados" min="1" step="1" value="1" readonly required />
           </label>
           <label>Minor defects
             <input type="number" name="defeitos_leves" min="0" step="1" value="0" />
@@ -186,10 +180,17 @@
           </label>
           <div class="full amostras-box">
             <div class="amostras-head">
-              <strong>Weights for 30 samples</strong>
-              <span id="amostrasResumo">0/30 filled</span>
+              <strong>Sample items (Weight + Ripeness + Dry matter)</strong>
+              <span id="amostrasResumo">0/1 completed</span>
             </div>
-            <div id="amostrasPesos" class="amostras-grid" aria-label="Sample weights"></div>
+            <div class="amostras-nav">
+              <button id="amostrasPrev" type="button" class="ghost">Previous page</button>
+              <span id="amostrasMeta">Page 1 of 1</span>
+              <button id="amostrasNext" type="button" class="ghost">Next page</button>
+              <button id="amostrasAdd" type="button">Add item</button>
+              <button id="amostrasDel" type="button" class="ghost">Remove last</button>
+            </div>
+            <div id="amostrasPesos" class="amostras-grid" aria-label="Sample items"></div>
           </div>
           <label class="full">Collection images (optional)
             <input id="coletaImagens" type="file" accept="image/*" capture="environment" multiple />

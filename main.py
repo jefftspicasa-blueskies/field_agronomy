@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, model_validator
 from sqlalchemy import text
 
 try:
@@ -49,20 +49,42 @@ PWA_DIR = os.path.join(ROOT_DIR, "agronomia_offline_pwa")
 API_KEY_ENV_VAR = "AGRONOMIA_SYNC_API_KEY"
 
 
+class AnaliseItemDados(BaseModel):
+    peso_pu: float = Field(ge=0)
+    maturacao: int = Field(ge=1, le=5)
+    materia_seca: float = Field(ge=0, le=30)
+
+
 class AnaliseDados(BaseModel):
     fornecedor_id: int
     talhao: Optional[str] = Field(default=None, max_length=80)
     variedade: Optional[str] = Field(default=None, max_length=80)
     data_analise: Optional[date] = None
-    maturacao: Optional[int] = Field(default=None, ge=1, le=5)
-    materia_seca: float = Field(ge=0, le=30)
-    brix: Optional[float] = Field(default=None, ge=0, le=30)
-    ph: Optional[float] = Field(default=None, ge=0, le=14)
+    maturacao: Optional[float] = Field(default=None, ge=1, le=5)
+    materia_seca: Optional[float] = Field(default=None, ge=0, le=30)
     peso_pu: Optional[float] = Field(default=None, ge=0)
-    numero_frutos_analisados: int = Field(ge=1)
+    numero_frutos_analisados: Optional[int] = Field(default=None, ge=1)
+    amostras_itens: List[AnaliseItemDados] = Field(default_factory=list)
     defeitos_leves: int = Field(default=0, ge=0)
     defeitos_criticos: int = Field(default=0, ge=0)
     observacoes: Optional[str] = Field(default=None, max_length=1200)
+
+    @model_validator(mode="after")
+    def aplicar_regras_amostras(self):
+        # Nova dinamica: coleta por item sem obrigatoriedade fixa de 30 amostras.
+        if self.amostras_itens:
+            total = len(self.amostras_itens)
+            self.numero_frutos_analisados = total
+            self.peso_pu = round(sum(item.peso_pu for item in self.amostras_itens) / total, 4)
+            self.materia_seca = round(sum(item.materia_seca for item in self.amostras_itens) / total, 4)
+            self.maturacao = round(sum(item.maturacao for item in self.amostras_itens) / total, 2)
+            return self
+
+        # Compatibilidade com payloads antigos sem itens detalhados.
+        if self.numero_frutos_analisados is None or self.materia_seca is None or self.peso_pu is None:
+            raise ValueError("invalid_data")
+
+        return self
 
 
 class InspecaoDados(BaseModel):
@@ -139,7 +161,7 @@ def require_sync_api_key(
 
     provided = (x_api_key or "").strip() or (_extract_bearer_token(authorization) or "").strip()
     if provided != expected:
-        raise HTTPException(status_code=401, detail="Nao autorizado")
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def validar_registro(tipo_registro: str, dados: Dict[str, Any]) -> BaseModel:
@@ -149,7 +171,7 @@ def validar_registro(tipo_registro: str, dados: Dict[str, Any]) -> BaseModel:
         return _inspecao_adapter.validate_python(dados)
     if tipo_registro == TIPO_OCORRENCIA:
         return _ocorrencia_adapter.validate_python(dados)
-    raise ValueError(f"Tipo de registro nao suportado: {tipo_registro}")
+    raise ValueError(f"Unsupported record type: {tipo_registro}")
 
 
 def _sync_has_unique_id_local(conn) -> bool:
@@ -517,24 +539,24 @@ def erro_cliente_seguro(exc: Exception) -> str:
     txt = str(exc or "").strip()
     txt_lower = txt.lower()
 
-    if "id_local_invalido" in txt_lower or "invalid input syntax for type uuid" in txt_lower:
-        return "id_local_invalido"
-    if "validation" in txt_lower or "field required" in txt_lower:
-        return "dados_invalidos"
-    if "not null" in txt_lower:
-        return "dados_obrigatorios_ausentes"
-    if "foreign key" in txt_lower:
-        return "referencia_invalida"
+    if "id_local_invalido" in txt_lower or "invalid_local_id" in txt_lower or "invalid input syntax for type uuid" in txt_lower:
+        return "invalid_local_id"
+    if "dados_invalidos" in txt_lower or "invalid_data" in txt_lower or "validation" in txt_lower or "field required" in txt_lower:
+        return "invalid_data"
+    if "dados_obrigatorios_ausentes" in txt_lower or "missing_required_data" in txt_lower or "not null" in txt_lower:
+        return "missing_required_data"
+    if "referencia_invalida" in txt_lower or "invalid_reference" in txt_lower or "foreign key" in txt_lower:
+        return "invalid_reference"
 
-    return "falha_no_processamento"
+    return "processing_failure"
 
 
 @app.get("/health")
 def health():
     return {
         "ok": True,
-        "tipos_suportados": TIPOS_SUPORTADOS,
-        "auth_api_key_habilitada": _is_api_key_enabled(),
+        "supported_types": TIPOS_SUPORTADOS,
+        "api_key_auth_enabled": _is_api_key_enabled(),
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -606,7 +628,7 @@ def catalogo_fornecedores(
                 ),
                 {"like": like, "limite": limite, "aplicar_filtro": aplicar_filtro},
             ).mappings().all()
-            return {"registros": [dict(r) for r in rows], "total": len(rows)}
+            return {"records": [dict(r) for r in rows], "total": len(rows)}
 
         colunas = colunas or set()
         col_id = next((c for c in ("id", "id_fornecedor", "fornecedor_id") if c in colunas), None)
@@ -636,8 +658,8 @@ def catalogo_fornecedores(
                     out = _consultar_tabela(conn, tabela, _colunas_da_tabela(conn, tabela))
                     if out is not None:
                         if debug:
-                            out["fonte"] = tabela
-                            out["debug"] = {"meta": meta_debug, "erros": erros_debug}
+                            out["source"] = tabela
+                            out["debug"] = {"meta": meta_debug, "errors": erros_debug}
                         return out
                 except Exception as exc:
                     if debug:
@@ -666,8 +688,8 @@ def catalogo_fornecedores(
                     out = _consultar_tabela(conn, tabela, cols)
                     if out is not None:
                         if debug:
-                            out["fonte"] = tabela
-                            out["debug"] = {"meta": meta_debug, "erros": erros_debug}
+                            out["source"] = tabela
+                            out["debug"] = {"meta": meta_debug, "errors": erros_debug}
                         return out
                 except Exception as exc:
                     if debug:
@@ -676,27 +698,27 @@ def catalogo_fornecedores(
     except Exception as exc:
         if debug:
             return {
-                "registros": [],
+                "records": [],
                 "total": 0,
-                "aviso": "catalogo_indisponivel",
-                "debug": {"meta": meta_debug, "erros": erros_debug + [str(exc)]},
+                "warning": "catalog_unavailable",
+                "debug": {"meta": meta_debug, "errors": erros_debug + [str(exc)]},
             }
-        return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
+        return {"records": [], "total": 0, "warning": "catalog_unavailable"}
 
     if debug:
         return {
-            "registros": [],
+            "records": [],
             "total": 0,
-            "aviso": "catalogo_indisponivel",
-            "debug": {"meta": meta_debug, "erros": erros_debug},
+            "warning": "catalog_unavailable",
+            "debug": {"meta": meta_debug, "errors": erros_debug},
         }
-    return {"registros": [], "total": 0, "aviso": "catalogo_indisponivel"}
+    return {"records": [], "total": 0, "warning": "catalog_unavailable"}
 
 
 @app.post("/api/agronomia/sync/lote")
 def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
     if not payload.registros:
-        return {"resultados": [], "total": 0}
+        return {"results": [], "total": 0}
 
     resultados = []
 
@@ -714,7 +736,7 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
                     try:
                         UUID(str(reg.id_local))
                     except Exception as exc:
-                        raise ValueError("id_local_invalido") from exc
+                        raise ValueError("invalid_local_id") from exc
 
                     existe = conn.execute(
                         text(
@@ -771,25 +793,25 @@ def sync_lote(payload: SyncLoteIn, _auth=Depends(require_sync_api_key)):
                             "id_local": reg.id_local,
                             "tipo_registro": reg.tipo_registro,
                             "status": "erro",
-                            "mensagem_erro": erro_cliente_seguro(exc),
+                            "error_message": erro_cliente_seguro(exc),
                         }
                     )
     except Exception as exc:
         return {
-            "resultados": [
+            "results": [
                 {
                     "id_local": reg.id_local,
                     "tipo_registro": reg.tipo_registro,
                     "status": "erro",
-                    "mensagem_erro": "servico_indisponivel",
+                    "error_message": "service_unavailable",
                 }
                 for reg in payload.registros
             ],
-            "aviso": "banco_indisponivel",
-            "detalhe": str(exc),
+            "warning": "database_unavailable",
+            "detail": str(exc),
         }
 
-    return {"resultados": resultados}
+    return {"results": resultados}
 
 
 if os.path.isdir(PWA_DIR):

@@ -584,17 +584,49 @@ tbody tr:hover {
 	font-size: 0.88rem;
 }
 
+.amostras-nav {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+}
+
+.amostras-nav #amostrasMeta {
+	font-size: 0.82rem;
+	color: #48657e;
+	font-weight: 600;
+}
+
 .amostras-grid {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 8px;
+	grid-template-columns: 1fr;
+	gap: 10px;
 }
 
 .amostra-item {
 	display: grid;
-	gap: 4px;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 8px;
 	font-size: 0.8rem;
 	min-width: 0;
+	padding: 10px;
+	border: 1px solid #d7e7f7;
+	border-radius: 10px;
+	background: #fff;
+}
+
+.amostra-item .amostra-title {
+	grid-column: 1 / -1;
+	font-weight: 700;
+	color: #174d7a;
+}
+
+.amostra-item label {
+	display: grid;
+	gap: 4px;
+	font-size: 0.78rem;
+	color: #355269;
 }
 
 .amostra-item input {
@@ -642,7 +674,7 @@ tbody tr:hover {
 	}
 
 	.amostras-grid {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-columns: 1fr;
 		gap: 6px;
 	}
 
@@ -653,6 +685,7 @@ tbody tr:hover {
 
 	.amostra-item {
 		font-size: 0.76rem;
+		grid-template-columns: 1fr;
 	}
 
 	.fornecedores-table th,

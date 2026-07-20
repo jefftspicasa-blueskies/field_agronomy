@@ -1,22 +1,22 @@
-# Agronomia de Campo Offline (PWA)
+# Field Agronomy Offline (PWA)
 
-Este modulo roda em paralelo ao app principal e NAO altera o app.py.
+This module runs alongside the main app and does not modify app.py.
 
-## Escopo do app offline completo
+## Complete offline app scope
 
-O app agora cobre o fluxo inteiro de campo em modo offline:
+The app now covers the full field workflow in offline mode:
 
-1. Coleta agronomica (materia seca, peso, frutas, defeitos, observacoes)
-2. Inspecao de talhao (pragas, doencas, irrigacao, adubacao, clima, acao)
-3. Ocorrencias de campo (tipo, severidade, descricao, coordenadas)
-4. Catalogo local de fornecedores (atualizado da API ou manual)
-5. Fila de sincronizacao com exportacao/importacao JSON
+1. Agronomic collection (dry matter, weight, fruit items, defects, notes)
+2. Plot inspection (pests, diseases, irrigation, fertilization, weather, action)
+3. Field occurrences (type, severity, description, coordinates)
+4. Local supplier catalog (updated from API or manually)
+5. Sync queue with JSON export/import
 
-Todos os registros sao gravados localmente no IndexedDB e sincronizados depois.
+All records are saved locally in IndexedDB and synchronized later.
 
-## 1) Rodar API + frontend juntos na porta 8010
+## 1) Run API + frontend together on port 8010
 
-O frontend PWA e servido pela propria API, entao basta iniciar um unico processo:
+The PWA frontend is served by the same API process, so you only need one process:
 
 ```powershell
 cd \\192.168.0.24\blue_skies_app\agronomia_offline_sync_api
@@ -24,54 +24,54 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8010
 ```
 
-Acesse:
+Access:
 
 1. Desktop: http://localhost:8010/index.html
-2. Celular (mesma rede): http://IP_DA_MAQUINA:8010/index.html
+2. Mobile (same network): http://MACHINE_IP:8010/index.html
 
-Com ngrok free, abra apenas um tunel:
+With free ngrok, open only one tunnel:
 
 ```powershell
 ngrok http 8010
 ```
 
-Use o mesmo dominio HTTPS para instalar o app e sincronizar dados.
+Use the same HTTPS domain to install the app and synchronize data.
 
-Opcional (recomendado em producao): proteger API com token.
+Optional (recommended for production): protect API with token.
 
 ```powershell
-$env:AGRONOMIA_SYNC_API_KEY="SEU_TOKEN_FORTE_AQUI"
+$env:AGRONOMIA_SYNC_API_KEY="YOUR_STRONG_TOKEN_HERE"
 uvicorn main:app --host 0.0.0.0 --port 8010
 ```
 
-Depois, no app PWA em "Sincronizacao", preencher o campo "Token da API" e salvar.
+Then in the PWA app under Synchronization, fill in the API token field and save.
 
-Endpoints principais:
+Main endpoints:
 
 1. GET /health
 2. GET /api/agronomia/catalogos/fornecedores
 3. POST /api/agronomia/sync/lote
 
-## 2) Ajustar banco
+## 2) Database setup
 
-Execute:
+Run:
 
 1. [sql/setup_offline_sync_agronomia.sql](../sql/setup_offline_sync_agronomia.sql)
 
-## 3) Fluxo recomendado de uso em campo
+## 3) Recommended field usage flow
 
-1. Abrir app e ir em "Sincronizacao"
-2. Configurar URL da API como /api/agronomia/sync/lote (mesma origem)
-3. Atualizar catalogo de fornecedores
-4. Registrar coletas/inspecoes/ocorrencias no campo
-5. No retorno da internet, clicar "Sincronizar agora"
+1. Open the app and go to Synchronization
+2. Set API URL to /api/agronomia/sync/lote (same origin)
+3. Refresh supplier catalog
+4. Register collections/inspections/occurrences in the field
+5. When internet is available again, click Sync now
 
-## 4) Observacoes tecnicas
+## 4) Technical notes
 
-1. A fila offline usa id_local (UUID) para idempotencia.
-2. Registros tipo analise_campo geram insercao em trusted.tb_analise_detalhada_agronomia.
-3. Registros tipo inspecao_talhao e ocorrencia_campo tambem sao persistidos nas tabelas de dominio:
-	trusted.tb_inspecao_talhao_agronomia e trusted.tb_ocorrencia_campo_agronomia.
-4. Todos os tipos continuam com trilha em trusted.tb_sync_offline_agronomia para auditoria de sincronizacao.
-5. O Service Worker faz cache local dos assets para uso sem internet e nao cacheia /api/*.
-6. /health e /api/* continuam na API; /index.html e assets sao servidos pela mesma porta 8010.
+1. The offline queue uses id_local (UUID) for idempotency.
+2. analise_campo records insert into trusted.tb_analise_detalhada_agronomia.
+3. inspecao_talhao and ocorrencia_campo records are also persisted in domain tables:
+   trusted.tb_inspecao_talhao_agronomia and trusted.tb_ocorrencia_campo_agronomia.
+4. All types still write to trusted.tb_sync_offline_agronomia for sync auditing.
+5. Service Worker caches static assets for offline usage and does not cache /api/*.
+6. /health and /api/* remain in the API; /index.html and assets are served on the same port 8010.

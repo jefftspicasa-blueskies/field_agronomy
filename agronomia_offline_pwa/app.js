@@ -16,7 +16,7 @@ const TIPO_ANALISE = "analise_campo";
 const TIPO_INSPECAO = "inspecao_talhao";
 const TIPO_OCORRENCIA = "ocorrencia_campo";
 
-const TOTAL_AMOSTRAS = 30;
+const AMOSTRAS_POR_PAGINA = 5;
 const AMOSTRA_DECIMAIS = 3;
 
 const pesoPtFormatter = new Intl.NumberFormat("en-US", {
@@ -54,6 +54,11 @@ const kpiEnviados = document.getElementById("kpiEnviados");
 
 const amostrasPesosContainer = document.getElementById("amostrasPesos");
 const amostrasResumo = document.getElementById("amostrasResumo");
+const amostrasMeta = document.getElementById("amostrasMeta");
+const amostrasPrevBtn = document.getElementById("amostrasPrev");
+const amostrasNextBtn = document.getElementById("amostrasNext");
+const amostrasAddBtn = document.getElementById("amostrasAdd");
+const amostrasDelBtn = document.getElementById("amostrasDel");
 const coletaImagensInput = document.getElementById("coletaImagens");
 const imagensResumo = document.getElementById("imagensResumo");
 
@@ -63,6 +68,8 @@ const state = {
   editOcorrenciaId: null,
   editFornecedorId: null,
   editAnaliseImagens: [],
+  amostrasItens: [],
+  amostrasPaginaAtual: 1,
   feedbackTimer: null,
 };
 
@@ -139,6 +146,15 @@ function humanizeSyncError(value) {
     referencia_invalida: "Invalid reference",
     falha_no_processamento: "Processing failure",
     nao_autorizado: "Unauthorized",
+    service_unavailable: "Service unavailable",
+    database_unavailable: "Database unavailable",
+    catalog_unavailable: "Catalog unavailable",
+    invalid_data: "Invalid data",
+    missing_required_data: "Missing required data",
+    invalid_reference: "Invalid reference",
+    processing_failure: "Processing failure",
+    unauthorized: "Unauthorized",
+    invalid_local_id: "Invalid local ID",
   };
 
   if (byCode[normalized]) return byCode[normalized];
@@ -311,6 +327,14 @@ function getColetaQtdInput() {
   return coletaForm?.querySelector("input[name='numero_frutos_analisados']") || null;
 }
 
+function getColetaMateriaSecaInput() {
+  return coletaForm?.querySelector("input[name='materia_seca']") || null;
+}
+
+function getColetaMaturacaoInput() {
+  return coletaForm?.querySelector("input[name='maturacao']") || null;
+}
+
 function updateImagensResumo() {
   if (!imagensResumo || !coletaImagensInput) return;
   const qtd = coletaImagensInput.files?.length || 0;
@@ -325,67 +349,187 @@ function updateImagensResumo() {
   imagensResumo.textContent = "No images selected.";
 }
 
-function renderAmostrasInputs(initialValues = null) {
+function createEmptyAmostraItem() {
+  return {
+    peso_pu: "",
+    maturacao: "",
+    materia_seca: "",
+  };
+}
+
+function normalizeAmostrasItens(initialItems = null) {
+  if (Array.isArray(initialItems) && initialItems.length > 0) {
+    return initialItems.map((item) => ({
+      peso_pu: Number.isFinite(Number(item?.peso_pu)) ? Number(item.peso_pu).toFixed(AMOSTRA_DECIMAIS) : "",
+      maturacao: Number.isFinite(Number(item?.maturacao)) ? String(Number(item.maturacao)) : "",
+      materia_seca: Number.isFinite(Number(item?.materia_seca)) ? String(Number(item.materia_seca)) : "",
+    }));
+  }
+  return [createEmptyAmostraItem()];
+}
+
+function ensureAmostrasPaginaLimite() {
+  const totalPaginas = Math.max(1, Math.ceil(state.amostrasItens.length / AMOSTRAS_POR_PAGINA));
+  state.amostrasPaginaAtual = Math.min(Math.max(state.amostrasPaginaAtual, 1), totalPaginas);
+  return totalPaginas;
+}
+
+function updateAmostrasResumoAndMedia() {
+  const total = state.amostrasItens.length;
+  const validas = state.amostrasItens.filter((item) => {
+    const peso = Number(item.peso_pu);
+    const mat = Number(item.maturacao);
+    const seca = Number(item.materia_seca);
+    return Number.isFinite(peso) && peso > 0
+      && Number.isFinite(mat) && mat >= 1 && mat <= 5
+      && Number.isFinite(seca) && seca >= 0 && seca <= 30;
+  });
+
+  if (amostrasResumo) {
+    amostrasResumo.textContent = `${validas.length}/${total} completed`;
+  }
+
+  const pesoInput = getColetaPesoInput();
+  const qtdInput = getColetaQtdInput();
+  const secaInput = getColetaMateriaSecaInput();
+  const maturacaoInput = getColetaMaturacaoInput();
+
+  if (qtdInput) qtdInput.value = String(total || 0);
+
+  if (!validas.length) {
+    if (pesoInput) pesoInput.value = "";
+    if (secaInput) secaInput.value = "";
+    if (maturacaoInput) maturacaoInput.value = "";
+    return;
+  }
+
+  const mediaPeso = validas.reduce((acc, item) => acc + Number(item.peso_pu), 0) / validas.length;
+  const mediaSeca = validas.reduce((acc, item) => acc + Number(item.materia_seca), 0) / validas.length;
+  const mediaMaturacao = validas.reduce((acc, item) => acc + Number(item.maturacao), 0) / validas.length;
+
+  if (pesoInput) pesoInput.value = mediaPeso.toFixed(4);
+  if (secaInput) secaInput.value = mediaSeca.toFixed(4);
+  if (maturacaoInput) maturacaoInput.value = mediaMaturacao.toFixed(2);
+}
+
+function renderAmostrasInputs(initialItems = null) {
   if (!amostrasPesosContainer) return;
+
+  if (initialItems !== null) {
+    state.amostrasItens = normalizeAmostrasItens(initialItems);
+    state.amostrasPaginaAtual = 1;
+  }
+
+  if (!state.amostrasItens.length) {
+    state.amostrasItens = [createEmptyAmostraItem()];
+  }
+
+  const totalPaginas = ensureAmostrasPaginaLimite();
+  const inicio = (state.amostrasPaginaAtual - 1) * AMOSTRAS_POR_PAGINA;
+  const fim = Math.min(inicio + AMOSTRAS_POR_PAGINA, state.amostrasItens.length);
+  const pagina = state.amostrasItens.slice(inicio, fim);
+
   amostrasPesosContainer.innerHTML = "";
 
-  const values = Array.isArray(initialValues) && initialValues.length === TOTAL_AMOSTRAS
-    ? initialValues
-    : Array.from({ length: TOTAL_AMOSTRAS }, () => "");
-
-  for (let i = 1; i <= TOTAL_AMOSTRAS; i += 1) {
+  pagina.forEach((item, idx) => {
+    const idxGlobal = inicio + idx;
     const wrap = document.createElement("div");
     wrap.className = "amostra-item";
     wrap.innerHTML = `
-      <span>Sample ${i}</span>
-      <input type="text" inputmode="numeric" data-amostra-peso="${i}" placeholder="0.000" required />
+      <div class="amostra-title">Item ${idxGlobal + 1}</div>
+      <label>
+        Weight (g)
+        <input type="text" inputmode="numeric" data-amostra-peso="${idxGlobal}" placeholder="0.000" required />
+      </label>
+      <label>
+        Ripeness (1-5)
+        <input type="number" min="1" max="5" step="1" data-amostra-maturacao="${idxGlobal}" required />
+      </label>
+      <label>
+        Dry matter (%)
+        <input type="number" min="0" max="30" step="0.01" data-amostra-materia-seca="${idxGlobal}" required />
+      </label>
     `;
-    const input = wrap.querySelector("input");
-    const valorInicial = values[i - 1] === "" ? 0 : Number(values[i - 1]);
-    input.value = formatPesoMascara(valorInicial);
-    input?.addEventListener("input", () => {
-      input.value = aplicarMascaraPeso(input.value);
-      updateAmostrasResumoAndMedia();
-    });
-    input?.addEventListener("blur", () => {
-      input.value = formatPesoMascara(parsePesoMascara(input.value));
-      updateAmostrasResumoAndMedia();
-    });
+
+    const pesoInput = wrap.querySelector("input[data-amostra-peso]");
+    const matInput = wrap.querySelector("input[data-amostra-maturacao]");
+    const secaInput = wrap.querySelector("input[data-amostra-materia-seca]");
+
+    if (pesoInput) {
+      pesoInput.value = item.peso_pu ? formatPesoMascara(Number(item.peso_pu)) : "";
+      pesoInput.addEventListener("input", () => {
+        pesoInput.value = aplicarMascaraPeso(pesoInput.value);
+        const parsed = parsePesoMascara(pesoInput.value);
+        state.amostrasItens[idxGlobal].peso_pu = Number.isFinite(parsed) ? parsed.toFixed(AMOSTRA_DECIMAIS) : "";
+        updateAmostrasResumoAndMedia();
+      });
+      pesoInput.addEventListener("blur", () => {
+        const parsed = parsePesoMascara(pesoInput.value);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          pesoInput.value = formatPesoMascara(parsed);
+          state.amostrasItens[idxGlobal].peso_pu = parsed.toFixed(AMOSTRA_DECIMAIS);
+        } else {
+          pesoInput.value = "";
+          state.amostrasItens[idxGlobal].peso_pu = "";
+        }
+        updateAmostrasResumoAndMedia();
+      });
+    }
+
+    if (matInput) {
+      matInput.value = item.maturacao || "";
+      matInput.addEventListener("input", () => {
+        state.amostrasItens[idxGlobal].maturacao = matInput.value;
+        updateAmostrasResumoAndMedia();
+      });
+    }
+
+    if (secaInput) {
+      secaInput.value = item.materia_seca || "";
+      secaInput.addEventListener("input", () => {
+        state.amostrasItens[idxGlobal].materia_seca = secaInput.value;
+        updateAmostrasResumoAndMedia();
+      });
+    }
+
     amostrasPesosContainer.appendChild(wrap);
+  });
+
+  if (amostrasMeta) {
+    amostrasMeta.textContent = `Page ${state.amostrasPaginaAtual} of ${totalPaginas}`;
   }
+  if (amostrasPrevBtn) amostrasPrevBtn.disabled = state.amostrasPaginaAtual <= 1;
+  if (amostrasNextBtn) amostrasNextBtn.disabled = state.amostrasPaginaAtual >= totalPaginas;
+  if (amostrasDelBtn) amostrasDelBtn.disabled = state.amostrasItens.length <= 1;
 
   updateAmostrasResumoAndMedia();
 }
 
-function updateAmostrasResumoAndMedia() {
-  if (!amostrasPesosContainer) return;
-  const inputs = [...amostrasPesosContainer.querySelectorAll("input[data-amostra-peso]")];
-  const values = inputs.map((el) => parsePesoMascara(el.value)).filter((v) => Number.isFinite(v) && v > 0);
-
-  if (amostrasResumo) {
-    amostrasResumo.textContent = `${values.length}/${TOTAL_AMOSTRAS} filled`;
+function coletarAmostrasItens() {
+  if (!state.amostrasItens.length) {
+    throw new Error("Add at least one sample item.");
   }
 
-  const pesoInput = getColetaPesoInput();
-  if (!pesoInput) return;
-  if (values.length === TOTAL_AMOSTRAS) {
-    pesoInput.value = (values.reduce((acc, v) => acc + v, 0) / TOTAL_AMOSTRAS).toFixed(AMOSTRA_DECIMAIS);
-  } else {
-    pesoInput.value = "";
-  }
-}
+  return state.amostrasItens.map((item, idx) => {
+    const peso = Number(item.peso_pu);
+    const maturacao = Number(item.maturacao);
+    const materiaSeca = Number(item.materia_seca);
 
-function coletarAmostrasPesos() {
-  if (!amostrasPesosContainer) throw new Error("Samples container not found.");
-  const inputs = [...amostrasPesosContainer.querySelectorAll("input[data-amostra-peso]")];
-  if (inputs.length !== TOTAL_AMOSTRAS) throw new Error(`Expected ${TOTAL_AMOSTRAS} samples.`);
-
-  return inputs.map((el, idx) => {
-    const n = parsePesoMascara(el.value);
-    if (!Number.isFinite(n) || n <= 0) {
-      throw new Error(`Provide a valid weight for sample ${idx + 1}.`);
+    if (!Number.isFinite(peso) || peso <= 0) {
+      throw new Error(`Provide a valid weight for item ${idx + 1}.`);
     }
-    return Number(n.toFixed(AMOSTRA_DECIMAIS));
+    if (!Number.isFinite(maturacao) || maturacao < 1 || maturacao > 5) {
+      throw new Error(`Provide ripeness between 1 and 5 for item ${idx + 1}.`);
+    }
+    if (!Number.isFinite(materiaSeca) || materiaSeca < 0 || materiaSeca > 30) {
+      throw new Error(`Provide dry matter between 0 and 30 for item ${idx + 1}.`);
+    }
+
+    return {
+      peso_pu: Number(peso.toFixed(AMOSTRA_DECIMAIS)),
+      maturacao: Math.round(maturacao),
+      materia_seca: Number(materiaSeca.toFixed(4)),
+    };
   });
 }
 
@@ -444,8 +588,10 @@ async function coletarImagensColeta(existingImages = []) {
 
 function resetColetaExtras() {
   const qtdInput = getColetaQtdInput();
-  if (qtdInput) qtdInput.value = String(TOTAL_AMOSTRAS);
+  if (qtdInput) qtdInput.value = "1";
   state.editAnaliseImagens = [];
+  state.amostrasItens = [createEmptyAmostraItem()];
+  state.amostrasPaginaAtual = 1;
   renderAmostrasInputs();
   if (coletaImagensInput) coletaImagensInput.value = "";
   updateImagensResumo();
@@ -522,9 +668,9 @@ async function syncNow() {
         body: JSON.stringify(payload),
       });
       const json = await readJsonResponse(res, "Sync error");
-      const results = json.resultados || [];
-      const backendWarning = humanizeSyncError(json.aviso || "");
-      const backendDetail = String(json.detalhe || "").trim();
+      const results = json.results || json.resultados || [];
+      const backendWarning = humanizeSyncError(json.warning || json.aviso || "");
+      const backendDetail = String(json.detail || json.detalhe || "").trim();
 
       for (const r of lote) {
         const found = results.find((x) => x.id_local === r.id_local);
@@ -534,7 +680,7 @@ async function syncNow() {
           r.sincronizado_em = new Date().toISOString();
         } else {
           r.status_sync = "erro";
-          const baseError = humanizeSyncError(found?.mensagem_erro || backendWarning || "Failed to send");
+          const baseError = humanizeSyncError(found?.error_message || found?.mensagem_erro || backendWarning || "Failed to send");
           r.erro = backendDetail ? `${baseError}: ${truncateText(backendDetail, 120)}` : baseError;
           totalErros += 1;
         }
@@ -767,7 +913,7 @@ async function fetchFornecedoresApi() {
       },
     });
     const json = await readJsonResponse(res, "Catalog refresh error");
-    const rows = json.registros || [];
+    const rows = json.records || json.registros || [];
     await upsertFornecedoresLocal(rows);
     await refreshAll();
     feedback(`Catalog refreshed: ${rows.length} suppliers.`);
@@ -787,12 +933,20 @@ function fillAnaliseForm(rec) {
   coletaForm.querySelector("input[name='data_analise']").value = p.data_analise || todayDate();
   coletaForm.querySelector("input[name='maturacao']").value = p.maturacao ?? "";
   coletaForm.querySelector("input[name='materia_seca']").value = p.materia_seca ?? "";
-  coletaForm.querySelector("input[name='brix']").value = p.brix ?? "";
-  coletaForm.querySelector("input[name='ph']").value = p.ph ?? "";
   coletaForm.querySelector("input[name='defeitos_leves']").value = p.defeitos_leves ?? 0;
   coletaForm.querySelector("input[name='defeitos_criticos']").value = p.defeitos_criticos ?? 0;
   coletaForm.querySelector("textarea[name='observacoes']").value = p.observacoes || "";
-  renderAmostrasInputs(p.amostras_pesos_gramas || null);
+
+  let itens = p.amostras_itens;
+  if (!Array.isArray(itens) || !itens.length) {
+    const pesos = Array.isArray(p.amostras_pesos_gramas) ? p.amostras_pesos_gramas : [];
+    itens = pesos.map((peso) => ({
+      peso_pu: peso,
+      maturacao: p.maturacao ?? "",
+      materia_seca: p.materia_seca ?? "",
+    }));
+  }
+  renderAmostrasInputs(itens || null);
   updateImagensResumo();
   showView("view-analise-form");
 }
@@ -981,6 +1135,28 @@ async function setupActions() {
     document.getElementById(id)?.addEventListener("input", refreshAll);
   }
 
+  amostrasPrevBtn?.addEventListener("click", () => {
+    state.amostrasPaginaAtual = Math.max(1, state.amostrasPaginaAtual - 1);
+    renderAmostrasInputs();
+  });
+
+  amostrasNextBtn?.addEventListener("click", () => {
+    state.amostrasPaginaAtual += 1;
+    renderAmostrasInputs();
+  });
+
+  amostrasAddBtn?.addEventListener("click", () => {
+    state.amostrasItens.push(createEmptyAmostraItem());
+    state.amostrasPaginaAtual = Math.ceil(state.amostrasItens.length / AMOSTRAS_POR_PAGINA);
+    renderAmostrasInputs();
+  });
+
+  amostrasDelBtn?.addEventListener("click", () => {
+    if (state.amostrasItens.length <= 1) return;
+    state.amostrasItens.pop();
+    renderAmostrasInputs();
+  });
+
   fornecedoresBody?.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-ac]");
     if (!btn) return;
@@ -1064,26 +1240,27 @@ async function setupActions() {
     e.preventDefault();
     try {
       const fd = new FormData(coletaForm);
-      const amostrasPesos = coletarAmostrasPesos();
+      const amostrasItens = coletarAmostrasItens();
       const imagensColeta = await coletarImagensColeta(state.editAnaliseImagens);
-      const pesoMedio = amostrasPesos.reduce((acc, v) => acc + v, 0) / TOTAL_AMOSTRAS;
+      const totalItens = amostrasItens.length;
+      const pesoMedio = amostrasItens.reduce((acc, v) => acc + v.peso_pu, 0) / totalItens;
+      const materiaSecaMedia = amostrasItens.reduce((acc, v) => acc + v.materia_seca, 0) / totalItens;
+      const maturacaoMedia = amostrasItens.reduce((acc, v) => acc + v.maturacao, 0) / totalItens;
 
       const payload = {
         fornecedor_id: Number(fd.get("fornecedor_id")),
         talhao: String(fd.get("talhao") || ""),
         variedade: String(fd.get("variedade") || ""),
         data_analise: String(fd.get("data_analise") || todayDate()),
-        maturacao: numberOrNull(fd.get("maturacao")),
-        materia_seca: Number(fd.get("materia_seca")),
-        brix: numberOrNull(fd.get("brix")),
-        ph: numberOrNull(fd.get("ph")),
+        maturacao: Number(maturacaoMedia.toFixed(2)),
+        materia_seca: Number(materiaSecaMedia.toFixed(4)),
         peso_pu: Number(pesoMedio.toFixed(4)),
-        numero_frutos_analisados: TOTAL_AMOSTRAS,
+        numero_frutos_analisados: totalItens,
         defeitos_leves: Number(fd.get("defeitos_leves") || 0),
         defeitos_criticos: Number(fd.get("defeitos_criticos") || 0),
         observacoes: String(fd.get("observacoes") || ""),
-        amostras_pesos_gramas: amostrasPesos,
-        amostras_qtd: TOTAL_AMOSTRAS,
+        amostras_itens: amostrasItens,
+        amostras_qtd: totalItens,
         imagens_coleta: imagensColeta,
         imagens_qtd: imagensColeta.length,
       };
