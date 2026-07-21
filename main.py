@@ -526,28 +526,100 @@ def inserir_analise(conn, dados: AnaliseDados) -> int:
 
 
 def inserir_inspecao(conn, dados: InspecaoDados) -> int:
-    inserted = conn.execute(
+    # Resolve schema drift by mapping known aliases to existing columns.
+    table_schema = "trusted"
+    table_name = "tb_inspecao_talhao_agronomia"
+
+    col_rows = conn.execute(
         text(
             """
-            INSERT INTO trusted.tb_inspecao_talhao_agronomia
-            (fornecedor_id, talhao, estagio_fenologico, data_inspecao, pragas, doencas, irrigacao_escala, adubacao_escala, clima, acao_recomendada, observacoes)
-            VALUES (:fornecedor_id, :talhao, :estagio_fenologico, COALESCE(:data_inspecao, CURRENT_DATE), :pragas, :doencas, :irrigacao_escala, :adubacao_escala, :clima, :acao_recomendada, :observacoes)
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table
+            """
+        ),
+        {"schema": table_schema, "table": table_name},
+    ).fetchall()
+    colunas = {str(r[0]) for r in col_rows}
+
+    if not colunas:
+        raise ValueError("invalid_data")
+
+    def _pick(*aliases: str) -> Optional[str]:
+        for alias in aliases:
+            if alias in colunas:
+                return alias
+        return None
+
+    campos: List[str] = []
+    valores_expr: List[str] = []
+    params: Dict[str, Any] = {}
+
+    def _add(coluna: Optional[str], valor: Any, *, use_current_date_when_null: bool = False):
+        if not coluna:
+            return
+        campos.append(coluna)
+        if use_current_date_when_null:
+            valores_expr.append(f"COALESCE(:{coluna}, CURRENT_DATE)")
+        else:
+            valores_expr.append(f":{coluna}")
+        params[coluna] = valor
+
+    fornecedor_col = _pick("fornecedor_id", "id_fornecedor")
+    talhao_col = _pick("talhao", "talhao_nome")
+    estagio_col = _pick("estagio_fenologico", "estagio", "estagio_feno")
+
+    if not fornecedor_col or not talhao_col or not estagio_col:
+        raise ValueError("invalid_data")
+
+    _add(fornecedor_col, dados.fornecedor_id)
+    _add(talhao_col, dados.talhao)
+    _add(estagio_col, dados.estagio_fenologico)
+    _add(_pick("data_inspecao", "data", "data_registro"), dados.data_inspecao, use_current_date_when_null=True)
+    _add(_pick("pragas", "praga"), dados.pragas)
+    _add(_pick("doencas", "doenca"), dados.doencas)
+    _add(_pick("irrigacao_escala", "escala_irrigacao", "irrigacao"), dados.irrigacao_escala)
+    _add(_pick("adubacao_escala", "escala_adubacao", "adubacao"), dados.adubacao_escala)
+    _add(_pick("clima", "clima_dia", "condicao_climatica"), dados.clima)
+    _add(_pick("acao_recomendada", "acao", "recomendacao"), dados.acao_recomendada)
+    _add(_pick("observacoes", "observacao", "obs"), dados.observacoes)
+
+    if not campos:
+        raise ValueError("invalid_data")
+
+    id_col_has_default = conn.execute(
+        text(
+            """
+            SELECT column_default IS NOT NULL
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :table
+              AND column_name = 'id'
+            """
+        ),
+        {"schema": table_schema, "table": table_name},
+    ).scalar()
+
+    if (not id_col_has_default) and ("id" in colunas):
+        conn.execute(text(f"LOCK TABLE {table_schema}.{table_name} IN SHARE ROW EXCLUSIVE MODE"))
+        next_id = conn.execute(
+            text(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_schema}.{table_name}")
+        ).scalar()
+        campos = ["id", *campos]
+        valores_expr = [":id", *valores_expr]
+        params["id"] = int(next_id)
+
+    inserted = conn.execute(
+        text(
+            f"""
+            INSERT INTO {table_schema}.{table_name}
+            ({", ".join(campos)})
+            VALUES ({", ".join(valores_expr)})
             RETURNING id
             """
         ),
-        {
-            "fornecedor_id": dados.fornecedor_id,
-            "talhao": dados.talhao,
-            "estagio_fenologico": dados.estagio_fenologico,
-            "data_inspecao": dados.data_inspecao,
-            "pragas": dados.pragas,
-            "doencas": dados.doencas,
-            "irrigacao_escala": dados.irrigacao_escala,
-            "adubacao_escala": dados.adubacao_escala,
-            "clima": dados.clima,
-            "acao_recomendada": dados.acao_recomendada,
-            "observacoes": dados.observacoes,
-        },
+        params,
     ).scalar()
     return int(inserted)
 
