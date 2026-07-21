@@ -458,7 +458,7 @@ function renderAmostrasInputs(initialItems = null) {
     wrap.innerHTML = `
       <div class="amostra-title">Item ${idxGlobal + 1}</div>
       <label>
-        Weight (g)
+        Weight (Kg)
         <input type="text" inputmode="numeric" data-amostra-peso="${idxGlobal}" placeholder="0,000" required />
       </label>
       <label>
