@@ -1011,11 +1011,75 @@ function openAnaliseReport(rec, fornecedorNome, autoPrint = false) {
 }
 
 function escapePdfText(value) {
-  return String(value ?? "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
-    .replace(/[\r\n\t]/g, " ");
+  const winAnsiMap = {
+    "€": 128,
+    "‚": 130,
+    "ƒ": 131,
+    "„": 132,
+    "…": 133,
+    "†": 134,
+    "‡": 135,
+    "ˆ": 136,
+    "‰": 137,
+    "Š": 138,
+    "‹": 139,
+    "Œ": 140,
+    "Ž": 142,
+    "‘": 145,
+    "’": 146,
+    "“": 147,
+    "”": 148,
+    "•": 149,
+    "–": 150,
+    "—": 151,
+    "˜": 152,
+    "™": 153,
+    "š": 154,
+    "›": 155,
+    "œ": 156,
+    "ž": 158,
+    "Ÿ": 159,
+  };
+
+  const text = String(value ?? "").replace(/[\r\n\t]/g, " ");
+  let out = "";
+
+  for (const ch of text) {
+    if (ch === "\\") {
+      out += "\\\\";
+      continue;
+    }
+    if (ch === "(") {
+      out += "\\(";
+      continue;
+    }
+    if (ch === ")") {
+      out += "\\)";
+      continue;
+    }
+
+    const code = ch.codePointAt(0) || 32;
+    if (code >= 32 && code <= 126) {
+      out += ch;
+      continue;
+    }
+
+    let byte = null;
+    if (code >= 160 && code <= 255) {
+      byte = code;
+    } else if (Object.prototype.hasOwnProperty.call(winAnsiMap, ch)) {
+      byte = winAnsiMap[ch];
+    }
+
+    if (byte == null) {
+      out += "?";
+      continue;
+    }
+
+    out += `\\${byte.toString(8).padStart(3, "0")}`;
+  }
+
+  return out;
 }
 
 function base64DataUrlToBytes(dataUrl) {
@@ -1117,27 +1181,37 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     })
     .filter(Boolean);
 
-  const content = [];
-  const pushText = (fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
-    const txt = escapePdfText(value).slice(0, 140);
-    content.push("BT");
-    content.push(`${color[0]} ${color[1]} ${color[2]} rg`);
-    content.push(`${fontAlias} ${size} Tf`);
-    content.push(`1 0 0 1 ${x} ${y} Tm`);
-    content.push(`(${txt}) Tj`);
-    content.push("ET");
+  const pages = [];
+  const createPage = () => {
+    const page = [];
+    pages.push(page);
+    return page;
   };
 
-  // Header band
-  content.push("0.09 0.36 0.65 rg");
-  content.push("40 785 515 35 re f");
-  content.push("1 1 1 rg");
-  pushText("/F2", 18, 52, 798, "Analysis Report", [1, 1, 1]);
-  pushText("/F1", 10, 400, 798, `ID: ${rec.id_local || "-"}`, [1, 1, 1]);
+  const pushText = (page, fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
+    const txt = escapePdfText(value).slice(0, 140);
+    page.push("BT");
+    page.push(`${color[0]} ${color[1]} ${color[2]} rg`);
+    page.push(`${fontAlias} ${size} Tf`);
+    page.push(`1 0 0 1 ${x} ${y} Tm`);
+    page.push(`(${txt}) Tj`);
+    page.push("ET");
+  };
+
+  const drawPageHeader = (page) => {
+    page.push("0.09 0.36 0.65 rg");
+    page.push("40 785 515 35 re f");
+    page.push("1 1 1 rg");
+    pushText(page, "/F2", 18, 52, 798, "Analysis Report", [1, 1, 1]);
+    pushText(page, "/F1", 10, 400, 798, `ID: ${rec.id_local || "-"}`, [1, 1, 1]);
+  };
+
+  let currentPage = createPage();
+  drawPageHeader(currentPage);
 
   // Summary title
-  content.push("0.12 0.2 0.3 rg");
-  pushText("/F2", 12, 50, 765, "Summary", [0.1, 0.16, 0.24]);
+  currentPage.push("0.12 0.2 0.3 rg");
+  pushText(currentPage, "/F2", 12, 50, 765, "Summary", [0.1, 0.16, 0.24]);
 
   const summary = [
     ["Date", p.data_analise || "-"],
@@ -1160,87 +1234,112 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
 
   let y = 748;
   for (const [label, value] of summary) {
-    pushText("/F2", 10, 50, y, `${label}:`, [0.1, 0.16, 0.24]);
-    pushText("/F1", 10, 210, y, String(value), [0.08, 0.12, 0.18]);
+    pushText(currentPage, "/F2", 10, 50, y, `${label}:`, [0.1, 0.16, 0.24]);
+    pushText(currentPage, "/F1", 10, 210, y, String(value), [0.08, 0.12, 0.18]);
     y -= 16;
   }
 
-  pushText("/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
+  pushText(currentPage, "/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
   const notes = String(p.observacoes || "-");
   const notesChunks = notes.match(/.{1,88}/g) || ["-"];
   let notesY = y;
   for (const chunk of notesChunks.slice(0, 2)) {
-    pushText("/F1", 10, 210, notesY, chunk, [0.08, 0.12, 0.18]);
+    pushText(currentPage, "/F1", 10, 210, notesY, chunk, [0.08, 0.12, 0.18]);
     notesY -= 14;
   }
 
-  // Samples section title
-  const tableTop = notesY - 22;
-  content.push("0.12 0.2 0.3 rg");
-  pushText("/F2", 12, 50, tableTop + 8, "Collected Samples", [0.1, 0.16, 0.24]);
-
-  // Table layout
+  // Samples table layout and pagination
   const x0 = 50;
-  const y0 = tableTop - 8;
   const colW = [70, 430];
   const rowH = 18;
-  const maxRows = 18;
-  const rowsToShow = Math.min(itens.length, maxRows);
   const tableWidth = colW.reduce((a, b) => a + b, 0);
-  const totalRows = rowsToShow + 1; // header + data
+  const pageBottom = 70;
+  let tableTop = notesY - 22;
+  let cursor = 0;
+  const totalItens = itens.length;
 
-  // Header background
-  content.push("0.9 0.94 0.98 rg");
-  content.push(`${x0} ${y0 - rowH} ${tableWidth} ${rowH} re f`);
+  const drawTableChunk = (page, title, startY, startIndex, chunkRows) => {
+    const y0 = startY - 8;
+    const totalRows = chunkRows + 1;
 
-  // Grid
-  content.push("0.75 0.82 0.9 RG");
-  content.push("0.7 w");
-  for (let r = 0; r <= totalRows; r += 1) {
-    const yy = y0 - r * rowH;
-    content.push(`${x0} ${yy} m ${x0 + tableWidth} ${yy} l S`);
-  }
+    page.push("0.12 0.2 0.3 rg");
+    pushText(page, "/F2", 12, 50, startY + 8, title, [0.1, 0.16, 0.24]);
 
-  let xLine = x0;
-  content.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
-  for (const w of colW) {
-    xLine += w;
-    content.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
-  }
+    page.push("0.9 0.94 0.98 rg");
+    page.push(`${x0} ${y0 - rowH} ${tableWidth} ${rowH} re f`);
 
-  // Header text
-  const headers = ["Item", "Weight (g)"];
-  let hx = x0 + 6;
-  for (let i = 0; i < headers.length; i += 1) {
-    pushText("/F2", 10, hx, y0 - 13, headers[i], [0.08, 0.12, 0.18]);
-    hx += colW[i];
-  }
+    page.push("0.75 0.82 0.9 RG");
+    page.push("0.7 w");
+    for (let r = 0; r <= totalRows; r += 1) {
+      const yy = y0 - r * rowH;
+      page.push(`${x0} ${yy} m ${x0 + tableWidth} ${yy} l S`);
+    }
 
-  // Data rows
-  for (let i = 0; i < rowsToShow; i += 1) {
-    const item = itens[i] || {};
-    const peso = Number(item.peso_pu);
-    const rowVals = [
-      String(i + 1),
-      Number.isFinite(peso) ? peso.toFixed(3) : "-",
-    ];
+    let xLine = x0;
+    page.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
+    for (const w of colW) {
+      xLine += w;
+      page.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
+    }
 
-    let cx = x0 + 6;
-    const cy = y0 - rowH * (i + 1) - 13;
-    for (let c = 0; c < rowVals.length; c += 1) {
-      pushText("/F1", 10, cx, cy, rowVals[c], [0.06, 0.08, 0.1]);
-      cx += colW[c];
+    const headers = ["Item", "Weight (g)"];
+    let hx = x0 + 6;
+    for (let i = 0; i < headers.length; i += 1) {
+      pushText(page, "/F2", 10, hx, y0 - 13, headers[i], [0.08, 0.12, 0.18]);
+      hx += colW[i];
+    }
+
+    for (let i = 0; i < chunkRows; i += 1) {
+      const item = itens[startIndex + i] || {};
+      const peso = Number(item.peso_pu);
+      const rowVals = [
+        String(startIndex + i + 1),
+        Number.isFinite(peso) ? peso.toFixed(3) : "-",
+      ];
+
+      let cx = x0 + 6;
+      const cy = y0 - rowH * (i + 1) - 13;
+      for (let c = 0; c < rowVals.length; c += 1) {
+        pushText(page, "/F1", 10, cx, cy, rowVals[c], [0.06, 0.08, 0.1]);
+        cx += colW[c];
+      }
+    }
+
+    return y0 - rowH * totalRows;
+  };
+
+  if (!totalItens) {
+    const tableBottom = drawTableChunk(currentPage, "Collected Samples", tableTop, 0, 1);
+    pushText(currentPage, "/F1", 10, x0 + 6, tableTop - 8 - rowH * 2 + 5, "-", [0.06, 0.08, 0.1]);
+    tableTop = tableBottom;
+  } else {
+    while (cursor < totalItens) {
+      const baseY = cursor === 0 ? tableTop : 760;
+      const y0 = baseY - 8;
+      const availableRows = Math.max(1, Math.floor((y0 - pageBottom) / rowH) - 1);
+      const chunkRows = Math.min(availableRows, totalItens - cursor);
+      const title = cursor === 0 ? "Collected Samples" : "Collected Samples (cont.)";
+      const tableBottom = drawTableChunk(currentPage, title, baseY, cursor, chunkRows);
+      cursor += chunkRows;
+      tableTop = tableBottom;
+      if (cursor < totalItens) {
+        currentPage = createPage();
+        drawPageHeader(currentPage);
+      }
     }
   }
 
-  if (itens.length > maxRows) {
-    pushText("/F1", 9, 50, y0 - rowH * (totalRows + 1), `Showing first ${maxRows} of ${itens.length} samples.`, [0.28, 0.32, 0.36]);
+  // Images section
+  const minImageStartY = 230;
+  let imageTitleY = tableTop - 26;
+  if (imageTitleY < minImageStartY && imagens.length) {
+    currentPage = createPage();
+    drawPageHeader(currentPage);
+    imageTitleY = 748;
   }
 
-  // Images section
-  const imageTitleY = y0 - rowH * (totalRows + 2);
   if (imagens.length) {
-    pushText("/F2", 12, 50, imageTitleY, "Collected Images", [0.1, 0.16, 0.24]);
+    pushText(currentPage, "/F2", 12, 50, imageTitleY, "Collected Images", [0.1, 0.16, 0.24]);
 
     const startY = imageTitleY - 10;
     const boxes = [
@@ -1264,53 +1363,68 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       const yImg = startY - drawH;
 
       // frame
-      content.push("0.82 0.87 0.93 RG");
-      content.push("0.6 w");
-      content.push(`${box.x} ${startY - box.h} ${box.w} ${box.h} re S`);
+      currentPage.push("0.82 0.87 0.93 RG");
+      currentPage.push("0.6 w");
+      currentPage.push(`${box.x} ${startY - box.h} ${box.w} ${box.h} re S`);
 
       // image
-      content.push("q");
-      content.push(`${drawW} 0 0 ${drawH} ${x} ${yImg} cm`);
-      content.push(`/Im${i + 1} Do`);
-      content.push("Q");
+      currentPage.push("q");
+      currentPage.push(`${drawW} 0 0 ${drawH} ${x} ${yImg} cm`);
+      currentPage.push(`/Im${i + 1} Do`);
+      currentPage.push("Q");
 
-      pushText("/F1", 8, box.x, startY - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
+      pushText(currentPage, "/F1", 8, box.x, startY - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
     }
   }
 
-  const contentStream = `${content.join("\n")}\n`;
   const encoder = new TextEncoder();
-  const contentBytes = encoder.encode(contentStream);
-  const contentLength = contentBytes.length;
+  const contentBytesList = pages.map((page) => encoder.encode(`${page.join("\n")}\n`));
+
+  const fontObjNormal = 3;
+  const fontObjBold = 4;
+  const firstPageObj = 5;
+  const pageCount = pages.length;
+  const firstContentObj = firstPageObj + pageCount;
+  const firstImageObj = firstContentObj + pageCount;
 
   const xObjectsDict = imagens.length
-    ? `/XObject << ${imagens.map((_, idx) => `/Im${idx + 1} ${7 + idx} 0 R`).join(" ")} >>`
+    ? `/XObject << ${imagens.map((_, idx) => `/Im${idx + 1} ${firstImageObj + idx} 0 R`).join(" ")} >>`
     : "";
 
   const obj1 = encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-  const obj2 = encoder.encode("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-  const obj3 = encoder.encode(
-    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> ${xObjectsDict} >> /Contents 4 0 R >>\nendobj\n`
-  );
-  const obj4 = concatUint8Arrays([
-    encoder.encode(`4 0 obj\n<< /Length ${contentLength} >>\nstream\n`),
-    contentBytes,
-    encoder.encode("endstream\nendobj\n"),
-  ]);
-  const obj5 = encoder.encode("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
-  const obj6 = encoder.encode("6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
+  const kidsRefs = Array.from({ length: pageCount }, (_, idx) => `${firstPageObj + idx} 0 R`).join(" ");
+  const obj2 = encoder.encode(`2 0 obj\n<< /Type /Pages /Kids [${kidsRefs}] /Count ${pageCount} >>\nendobj\n`);
+  const obj3 = encoder.encode(`${fontObjNormal} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`);
+  const obj4 = encoder.encode(`${fontObjBold} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n`);
+
+  const pageObjects = Array.from({ length: pageCount }, (_, idx) => {
+    const pageObjNum = firstPageObj + idx;
+    const contentObjNum = firstContentObj + idx;
+    return encoder.encode(
+      `${pageObjNum} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjNormal} 0 R /F2 ${fontObjBold} 0 R >> ${xObjectsDict} >> /Contents ${contentObjNum} 0 R >>\nendobj\n`
+    );
+  });
+
+  const contentObjects = contentBytesList.map((contentBytes, idx) => {
+    const contentObjNum = firstContentObj + idx;
+    return concatUint8Arrays([
+      encoder.encode(`${contentObjNum} 0 obj\n<< /Length ${contentBytes.length} >>\nstream\n`),
+      contentBytes,
+      encoder.encode("endstream\nendobj\n"),
+    ]);
+  });
 
   const imageObjects = imagens.map((img, idx) =>
     concatUint8Arrays([
       encoder.encode(
-        `${7 + idx} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\nstream\n`
+        `${firstImageObj + idx} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\nstream\n`
       ),
       img.bytes,
       encoder.encode("\nendstream\nendobj\n"),
     ])
   );
 
-  const objects = [obj1, obj2, obj3, obj4, obj5, obj6, ...imageObjects];
+  const objects = [obj1, obj2, obj3, obj4, ...pageObjects, ...contentObjects, ...imageObjects];
   const header = encoder.encode("%PDF-1.4\n");
 
   const parts = [header];
