@@ -1395,41 +1395,33 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     }
   }
 
-  // Images section
-  const minImageStartY = 230;
-  let imageTitleY = tableTop - 26;
-  if (imageTitleY < minImageStartY && imagens.length) {
+  // Images section: keep all images together in a single block (no page break)
+  const imagensBloco = imagens.slice(0, 5);
+  if (imagensBloco.length) {
     currentPage = createPage();
     drawPageHeader(currentPage);
-    imageTitleY = 748;
-  }
 
-  if (imagens.length) {
+    const imageTitleY = 748;
+    pushText(currentPage, "/F2", 12, 50, imageTitleY, "Collected Images", [0.1, 0.16, 0.24]);
+
+    const boxW = 157;
+    const boxH = 96;
+    const gapX = 12;
+    const row1Top = imageTitleY - 22;
+    const row2Top = row1Top - boxH - 44;
+
+    const row2StartX = (595 - (2 * boxW + gapX)) / 2;
     const boxes = [
-      { x: 50, w: 160, h: 100 },
-      { x: 220, w: 160, h: 100 },
-      { x: 390, w: 160, h: 100 },
+      { x: 50, top: row1Top, w: boxW, h: boxH },
+      { x: 50 + boxW + gapX, top: row1Top, w: boxW, h: boxH },
+      { x: 50 + (boxW + gapX) * 2, top: row1Top, w: boxW, h: boxH },
+      { x: row2StartX, top: row2Top, w: boxW, h: boxH },
+      { x: row2StartX + boxW + gapX, top: row2Top, w: boxW, h: boxH },
     ];
-    const perPage = boxes.length;
-    const totalPages = Math.ceil(imagens.length / perPage);
 
-    for (let pageIdx = 0; pageIdx < totalPages; pageIdx += 1) {
-      if (pageIdx > 0) {
-        currentPage = createPage();
-        drawPageHeader(currentPage);
-        imageTitleY = 748;
-      }
-
-      const pageStart = pageIdx * perPage;
-      const pageEnd = Math.min(pageStart + perPage, imagens.length);
-      const title = pageIdx === 0 ? "Collected Images" : `Collected Images (cont. ${pageIdx + 1}/${totalPages})`;
-
-      pushText(currentPage, "/F2", 12, 50, imageTitleY, title, [0.1, 0.16, 0.24]);
-
-      const startY = imageTitleY - 10;
-      for (let i = pageStart; i < pageEnd; i += 1) {
-        const box = boxes[i - pageStart];
-        const img = imagens[i];
+    for (let i = 0; i < imagensBloco.length; i += 1) {
+      const box = boxes[i];
+      const img = imagensBloco[i];
       const ratio = img.width / img.height;
       let drawW = box.w;
       let drawH = drawW / ratio;
@@ -1439,21 +1431,18 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       }
 
       const x = box.x + (box.w - drawW) / 2;
-      const yImg = startY - drawH;
+      const yImg = box.top - drawH;
 
-      // frame
       currentPage.push("0.82 0.87 0.93 RG");
       currentPage.push("0.6 w");
-      currentPage.push(`${box.x} ${startY - box.h} ${box.w} ${box.h} re S`);
+      currentPage.push(`${box.x} ${box.top - box.h} ${box.w} ${box.h} re S`);
 
-      // image
       currentPage.push("q");
       currentPage.push(`${drawW} 0 0 ${drawH} ${x} ${yImg} cm`);
-        currentPage.push(`/Im${i + 1} Do`);
+      currentPage.push(`/Im${i + 1} Do`);
       currentPage.push("Q");
 
-        pushText(currentPage, "/F1", 8, box.x, startY - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
-      }
+      pushText(currentPage, "/F1", 8, box.x, box.top - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
     }
   }
 
@@ -2282,12 +2271,12 @@ if ("serviceWorker" in navigator) {
       const scriptUrl = String(
         reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || ""
       );
-      if (scriptUrl.includes("sw.js?v=25")) return null;
+      if (scriptUrl.includes("sw.js?v=26")) return null;
       return reg.unregister().catch(() => null);
     })))
     .catch(() => {});
 
-  navigator.serviceWorker.register("./sw.js?v=25", { updateViaCache: "none" })
+  navigator.serviceWorker.register("./sw.js?v=26", { updateViaCache: "none" })
     .then((registration) => {
       registration.update().catch(() => {});
       setTimeout(() => registration.update().catch(() => {}), 1200);
