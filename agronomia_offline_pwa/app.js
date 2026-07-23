@@ -382,6 +382,36 @@ function collectMaturityLevelsFromInputs() {
   };
 }
 
+function formatPercentValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "0%";
+  const rounded = Math.round(n * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+function getMaturityPercentages(levels, total) {
+  const safeTotal = Number(total) > 0 ? Number(total) : 0;
+  const out = {};
+
+  for (const level of MATURITY_LEVELS) {
+    const count = Math.max(0, Number.parseInt(String(levels?.[level.key] ?? "0"), 10) || 0);
+    out[level.key] = safeTotal > 0 ? (count / safeTotal) * 100 : 0;
+  }
+
+  return out;
+}
+
+function updateMaturityPercentagesUi(maturityData = null) {
+  const data = maturityData || collectMaturityLevelsFromInputs();
+  const percentages = getMaturityPercentages(data.levels, data.total);
+
+  for (const level of MATURITY_LEVELS) {
+    const el = coletaForm?.querySelector(`[data-maturity-percent-for='${level.key}']`);
+    if (!el) continue;
+    el.textContent = formatPercentValue(percentages[level.key]);
+  }
+}
+
 function parseMaturityLevelsFromForm() {
   const data = collectMaturityLevelsFromInputs();
   if (data.total <= 0) {
@@ -486,6 +516,8 @@ function updateAmostrasResumoAndMedia() {
   const qtdInput = getColetaQtdInput();
   const maturacaoInput = getColetaMaturacaoInput();
   const maturityData = collectMaturityLevelsFromInputs();
+
+  updateMaturityPercentagesUi(maturityData);
 
   if (qtdInput) qtdInput.value = String(maturityData.total || 0);
   if (maturacaoInput) {
@@ -1050,6 +1082,9 @@ function concatUint8Arrays(parts) {
 function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const p = rec.payload_json || {};
   const maturityLevels = getMaturityLevelsFromPayload(p);
+  const maturityTotal = MATURITY_LEVELS
+    .reduce((acc, level) => acc + (Math.max(0, Number.parseInt(String(maturityLevels[level.key] ?? "0"), 10) || 0)), 0);
+  const maturityPercentages = getMaturityPercentages(maturityLevels, maturityTotal);
 
   let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
@@ -1107,12 +1142,12 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     ["Variety", p.variedade || "-"],
     ["Average Weight (g)", Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"],
     ["Maturity (avg)", Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"],
-    ["Ripeness L1", String(maturityLevels.maturity_level_1 ?? 0)],
-    ["Ripeness L1.5", String(maturityLevels.maturity_level_1_5 ?? 0)],
-    ["Ripeness L2", String(maturityLevels.maturity_level_2 ?? 0)],
-    ["Ripeness L2.5", String(maturityLevels.maturity_level_2_5 ?? 0)],
-    ["Ripeness L3", String(maturityLevels.maturity_level_3 ?? 0)],
-    ["Ripeness L3.5", String(maturityLevels.maturity_level_3_5 ?? 0)],
+    ["Ripeness L1", `${maturityLevels.maturity_level_1 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_1)})`],
+    ["Ripeness L1.5", `${maturityLevels.maturity_level_1_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_1_5)})`],
+    ["Ripeness L2", `${maturityLevels.maturity_level_2 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_2)})`],
+    ["Ripeness L2.5", `${maturityLevels.maturity_level_2_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_2_5)})`],
+    ["Ripeness L3", `${maturityLevels.maturity_level_3 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3)})`],
+    ["Ripeness L3.5", `${maturityLevels.maturity_level_3_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3_5)})`],
     ["Dry Matter Avg (%)", Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"],
     ["Fruit Count", String(p.numero_frutos_analisados ?? "-")],
     ["Minor Defects", String(p.defeitos_leves ?? 0)],
