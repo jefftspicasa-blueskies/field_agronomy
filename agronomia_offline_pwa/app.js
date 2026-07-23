@@ -456,8 +456,12 @@ function fillMaturityLevels(levels) {
 
 function formatMaturityLevelsSummary(payload) {
   const levels = getMaturityLevelsFromPayload(payload);
+  const total = MATURITY_LEVELS
+    .reduce((acc, level) => acc + (Math.max(0, Number.parseInt(String(levels[level.key] ?? "0"), 10) || 0)), 0);
+  const percentages = getMaturityPercentages(levels, total);
+
   return MATURITY_LEVELS
-    .map((level) => `${level.label}: ${levels[level.key] ?? 0}`)
+    .map((level) => `${level.label}: ${levels[level.key] ?? 0} (${formatPercentValue(percentages[level.key])})`)
     .join(" | ");
 }
 
