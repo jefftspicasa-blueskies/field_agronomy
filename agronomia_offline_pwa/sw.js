@@ -1,9 +1,9 @@
-const CACHE = "bs-agro-offline-v22";
+const CACHE = "bs-agro-offline-v23";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=21",
-  "./app.js?v=21",
+  "./styles.css?v=23",
+  "./app.js?v=23",
   "./db.js",
   "./manifest.webmanifest",
   "./icon-192.png",

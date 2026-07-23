@@ -1394,8 +1394,8 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const obj1 = encoder.encode("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
   const kidsRefs = Array.from({ length: pageCount }, (_, idx) => `${firstPageObj + idx} 0 R`).join(" ");
   const obj2 = encoder.encode(`2 0 obj\n<< /Type /Pages /Kids [${kidsRefs}] /Count ${pageCount} >>\nendobj\n`);
-  const obj3 = encoder.encode(`${fontObjNormal} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`);
-  const obj4 = encoder.encode(`${fontObjBold} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n`);
+  const obj3 = encoder.encode(`${fontObjNormal} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n`);
+  const obj4 = encoder.encode(`${fontObjBold} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n`);
 
   const pageObjects = Array.from({ length: pageCount }, (_, idx) => {
     const pageObjNum = firstPageObj + idx;
@@ -2197,7 +2197,12 @@ window.addEventListener("online", async () => {
 window.addEventListener("offline", updateNetStatus);
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+    .then((registration) => {
+      registration.update().catch(() => {});
+      setTimeout(() => registration.update().catch(() => {}), 1200);
+    })
+    .catch(() => {});
 }
 
 setupNavigation();
