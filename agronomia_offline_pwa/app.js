@@ -18,6 +18,14 @@ const TIPO_OCORRENCIA = "ocorrencia_campo";
 
 const AMOSTRAS_POR_PAGINA = 1;
 const AMOSTRA_DECIMAIS = 3;
+const MATURITY_LEVELS = [
+  { key: "maturity_level_1", label: "Level 1", value: 1 },
+  { key: "maturity_level_1_5", label: "Level 1.5", value: 1.5 },
+  { key: "maturity_level_2", label: "Level 2", value: 2 },
+  { key: "maturity_level_2_5", label: "Level 2.5", value: 2.5 },
+  { key: "maturity_level_3", label: "Level 3", value: 3 },
+  { key: "maturity_level_3_5", label: "Level 3.5", value: 3.5 },
+];
 
 const pesoPtFormatter = new Intl.NumberFormat("pt-BR", {
   minimumFractionDigits: AMOSTRA_DECIMAIS,
@@ -350,6 +358,79 @@ function getColetaMaturacaoInput() {
   return coletaForm?.querySelector("input[name='maturacao']") || null;
 }
 
+function getMaturityLevelInput(levelKey) {
+  return coletaForm?.querySelector(`input[name='${levelKey}']`) || null;
+}
+
+function collectMaturityLevelsFromInputs() {
+  const levels = {};
+  let total = 0;
+  let weighted = 0;
+
+  for (const level of MATURITY_LEVELS) {
+    const input = getMaturityLevelInput(level.key);
+    const count = Math.max(0, Number.parseInt(String(input?.value || "0"), 10) || 0);
+    levels[level.key] = count;
+    total += count;
+    weighted += count * level.value;
+  }
+
+  return {
+    levels,
+    total,
+    average: total > 0 ? (weighted / total) : 0,
+  };
+}
+
+function parseMaturityLevelsFromForm() {
+  const data = collectMaturityLevelsFromInputs();
+  if (data.total <= 0) {
+    throw new Error("Fill Ripeness (maturity) levels with the quantity of analyzed fruits.");
+  }
+  return data;
+}
+
+function getMaturityLevelsFromPayload(payload) {
+  const candidate = payload?.maturity_levels || payload?.maturacao_niveis || {};
+  const levels = {};
+  let hasAny = false;
+
+  for (const level of MATURITY_LEVELS) {
+    const value = Math.max(0, Number.parseInt(String(candidate[level.key] ?? "0"), 10) || 0);
+    levels[level.key] = value;
+    if (value > 0) hasAny = true;
+  }
+
+  if (!hasAny) {
+    const total = Math.max(0, Number.parseInt(String(payload?.numero_frutos_analisados ?? "0"), 10) || 0);
+    const maturity = Number(payload?.maturity ?? payload?.maturacao);
+    if (total > 0 && Number.isFinite(maturity)) {
+      const nearest = MATURITY_LEVELS.reduce((prev, curr) => (
+        Math.abs(curr.value - maturity) < Math.abs(prev.value - maturity) ? curr : prev
+      ), MATURITY_LEVELS[0]);
+      levels[nearest.key] = total;
+    }
+  }
+
+  return levels;
+}
+
+function fillMaturityLevels(levels) {
+  for (const level of MATURITY_LEVELS) {
+    const input = getMaturityLevelInput(level.key);
+    if (!input) continue;
+    const value = Math.max(0, Number.parseInt(String(levels?.[level.key] ?? "0"), 10) || 0);
+    input.value = String(value);
+  }
+}
+
+function formatMaturityLevelsSummary(payload) {
+  const levels = getMaturityLevelsFromPayload(payload);
+  return MATURITY_LEVELS
+    .map((level) => `${level.label}: ${levels[level.key] ?? 0}`)
+    .join(" | ");
+}
+
 function updateImagensResumo() {
   if (!imagensResumo || !coletaImagensInput) return;
   const qtd = coletaImagensInput.files?.length || 0;
@@ -367,8 +448,6 @@ function updateImagensResumo() {
 function createEmptyAmostraItem() {
   return {
     peso_pu: "",
-    maturacao: "",
-    materia_seca: "",
   };
 }
 
@@ -376,8 +455,6 @@ function normalizeAmostrasItens(initialItems = null) {
   if (Array.isArray(initialItems) && initialItems.length > 0) {
     return initialItems.map((item) => ({
       peso_pu: Number.isFinite(Number(item?.peso_pu)) ? Number(item.peso_pu).toFixed(AMOSTRA_DECIMAIS) : "",
-      maturacao: Number.isFinite(Number(item?.maturacao)) ? String(Number(item.maturacao)) : "",
-      materia_seca: Number.isFinite(Number(item?.materia_seca)) ? String(Number(item.materia_seca)) : "",
     }));
   }
   return [createEmptyAmostraItem()];
@@ -393,11 +470,7 @@ function updateAmostrasResumoAndMedia() {
   const total = state.amostrasItens.length;
   const validas = state.amostrasItens.filter((item) => {
     const peso = Number(item.peso_pu);
-    const mat = Number(item.maturacao);
-    const seca = Number(item.materia_seca);
-    return Number.isFinite(peso) && peso > 0
-      && Number.isFinite(mat) && mat >= 1 && mat <= 5
-      && Number.isFinite(seca) && seca >= 0 && seca <= 30;
+    return Number.isFinite(peso) && peso > 0;
   });
 
   if (amostrasResumo) {
@@ -411,25 +484,22 @@ function updateAmostrasResumoAndMedia() {
 
   const pesoInput = getColetaPesoInput();
   const qtdInput = getColetaQtdInput();
-  const secaInput = getColetaMateriaSecaInput();
   const maturacaoInput = getColetaMaturacaoInput();
+  const maturityData = collectMaturityLevelsFromInputs();
 
-  if (qtdInput) qtdInput.value = String(total || 0);
+  if (qtdInput) qtdInput.value = String(maturityData.total || 0);
+  if (maturacaoInput) {
+    maturacaoInput.value = maturityData.total > 0 ? maturityData.average.toFixed(2) : "";
+  }
 
   if (!validas.length) {
     if (pesoInput) pesoInput.value = "";
-    if (secaInput) secaInput.value = "";
-    if (maturacaoInput) maturacaoInput.value = "";
     return;
   }
 
   const mediaPeso = validas.reduce((acc, item) => acc + Number(item.peso_pu), 0) / validas.length;
-  const mediaSeca = validas.reduce((acc, item) => acc + Number(item.materia_seca), 0) / validas.length;
-  const mediaMaturacao = validas.reduce((acc, item) => acc + Number(item.maturacao), 0) / validas.length;
 
   if (pesoInput) pesoInput.value = mediaPeso.toFixed(4);
-  if (secaInput) secaInput.value = mediaSeca.toFixed(4);
-  if (maturacaoInput) maturacaoInput.value = mediaMaturacao.toFixed(2);
 }
 
 function renderAmostrasInputs(initialItems = null) {
@@ -461,19 +531,9 @@ function renderAmostrasInputs(initialItems = null) {
         Weight (Kg)
         <input type="text" inputmode="numeric" data-amostra-peso="${idxGlobal}" placeholder="0,000" required />
       </label>
-      <label>
-        Ripeness (1-5)
-        <input type="number" min="1" max="5" step="1" data-amostra-maturacao="${idxGlobal}" required />
-      </label>
-      <label>
-        Dry matter (%)
-        <input type="number" min="0" max="30" step="0.01" data-amostra-materia-seca="${idxGlobal}" required />
-      </label>
     `;
 
     const pesoInput = wrap.querySelector("input[data-amostra-peso]");
-    const matInput = wrap.querySelector("input[data-amostra-maturacao]");
-    const secaInput = wrap.querySelector("input[data-amostra-materia-seca]");
 
     if (pesoInput) {
       pesoInput.value = item.peso_pu ? formatPesoMascara(Number(item.peso_pu)) : "";
@@ -492,22 +552,6 @@ function renderAmostrasInputs(initialItems = null) {
           pesoInput.value = "";
           state.amostrasItens[idxGlobal].peso_pu = "";
         }
-        updateAmostrasResumoAndMedia();
-      });
-    }
-
-    if (matInput) {
-      matInput.value = item.maturacao || "";
-      matInput.addEventListener("input", () => {
-        state.amostrasItens[idxGlobal].maturacao = matInput.value;
-        updateAmostrasResumoAndMedia();
-      });
-    }
-
-    if (secaInput) {
-      secaInput.value = item.materia_seca || "";
-      secaInput.addEventListener("input", () => {
-        state.amostrasItens[idxGlobal].materia_seca = secaInput.value;
         updateAmostrasResumoAndMedia();
       });
     }
@@ -532,23 +576,13 @@ function coletarAmostrasItens() {
 
   return state.amostrasItens.map((item, idx) => {
     const peso = Number(item.peso_pu);
-    const maturacao = Number(item.maturacao);
-    const materiaSeca = Number(item.materia_seca);
 
     if (!Number.isFinite(peso) || peso <= 0) {
       throw new Error(`Provide a valid weight for item ${idx + 1}.`);
     }
-    if (!Number.isFinite(maturacao) || maturacao < 1 || maturacao > 5) {
-      throw new Error(`Provide ripeness between 1 and 5 for item ${idx + 1}.`);
-    }
-    if (!Number.isFinite(materiaSeca) || materiaSeca < 0 || materiaSeca > 30) {
-      throw new Error(`Provide dry matter between 0 and 30 for item ${idx + 1}.`);
-    }
 
     return {
       peso_pu: Number(peso.toFixed(AMOSTRA_DECIMAIS)),
-      maturacao: Math.round(maturacao),
-      materia_seca: Number(materiaSeca.toFixed(4)),
     };
   });
 }
@@ -608,7 +642,8 @@ async function coletarImagensColeta(existingImages = []) {
 
 function resetColetaExtras() {
   const qtdInput = getColetaQtdInput();
-  if (qtdInput) qtdInput.value = "1";
+  if (qtdInput) qtdInput.value = "0";
+  fillMaturityLevels({});
   state.editAnaliseImagens = [];
   state.amostrasItens = [createEmptyAmostraItem()];
   state.amostrasPaginaAtual = 1;
@@ -849,21 +884,17 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
     itens = p.amostras_pesos_gramas.map((peso) => ({
       peso_pu: peso,
-      maturacao: p.maturacao ?? "",
-      materia_seca: p.materia_seca ?? "",
     }));
   }
 
+  const maturityLevels = formatMaturityLevelsSummary(p);
+
   const rows = itens.map((item, idx) => {
     const peso = Number(item?.peso_pu);
-    const maturacao = Number(item?.maturacao);
-    const materiaSeca = Number(item?.materia_seca);
     return `
       <tr>
         <td>${idx + 1}</td>
         <td>${Number.isFinite(peso) ? peso.toFixed(3) : "-"}</td>
-        <td>${Number.isFinite(maturacao) ? maturacao.toFixed(2) : "-"}</td>
-        <td>${Number.isFinite(materiaSeca) ? materiaSeca.toFixed(4) : "-"}</td>
       </tr>
     `;
   }).join("");
@@ -897,8 +928,9 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
         <div><b>Plot:</b> ${escapeHtml(p.talhao || "-")}</div>
         <div><b>Variety:</b> ${escapeHtml(p.variedade || "-")}</div>
         <div><b>Average Weight (g):</b> ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
-        <div><b>Average Ripeness:</b> ${Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"}</div>
-        <div><b>Average Dry Matter (%):</b> ${Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"}</div>
+        <div><b>Maturity:</b> ${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
+        <div><b>Ripeness (maturity):</b> ${escapeHtml(maturityLevels)}</div>
+        <div><b>Dry Matter Avg (%):</b> ${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
         <div><b>Fruit Count:</b> ${escapeHtml(p.numero_frutos_analisados ?? "-")}</div>
         <div><b>Minor Defects:</b> ${escapeHtml(p.defeitos_leves ?? 0)}</div>
         <div><b>Critical Defects:</b> ${escapeHtml(p.defeitos_criticos ?? 0)}</div>
@@ -911,12 +943,10 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
           <tr>
             <th>Item</th>
             <th>Weight (g)</th>
-            <th>Ripeness</th>
-            <th>Dry Matter (%)</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || '<tr><td colspan="4">No sample items found.</td></tr>'}
+          ${rows || '<tr><td colspan="2">No sample items found.</td></tr>'}
         </tbody>
       </table>
     </body>
@@ -1024,8 +1054,6 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
     itens = p.amostras_pesos_gramas.map((peso) => ({
       peso_pu: peso,
-      maturacao: p.maturacao ?? "",
-      materia_seca: p.materia_seca ?? "",
     }));
   }
 
@@ -1077,8 +1105,9 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     ["Plot", p.talhao || "-"],
     ["Variety", p.variedade || "-"],
     ["Average Weight (g)", Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"],
-    ["Average Ripeness", Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"],
-    ["Average Dry Matter (%)", Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"],
+    ["Maturity", Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"],
+    ["Ripeness (maturity)", formatMaturityLevelsSummary(p)],
+    ["Dry Matter Avg (%)", Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"],
     ["Fruit Count", String(p.numero_frutos_analisados ?? "-")],
     ["Minor Defects", String(p.defeitos_leves ?? 0)],
     ["Critical Defects", String(p.defeitos_criticos ?? 0)],
@@ -1108,7 +1137,7 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   // Table layout
   const x0 = 50;
   const y0 = tableTop - 8;
-  const colW = [55, 150, 130, 160];
+  const colW = [70, 430];
   const rowH = 18;
   const maxRows = 18;
   const rowsToShow = Math.min(itens.length, maxRows);
@@ -1135,7 +1164,7 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   }
 
   // Header text
-  const headers = ["Item", "Weight (g)", "Ripeness", "Dry Matter (%)"];
+  const headers = ["Item", "Weight (g)"];
   let hx = x0 + 6;
   for (let i = 0; i < headers.length; i += 1) {
     pushText("/F2", 10, hx, y0 - 13, headers[i], [0.08, 0.12, 0.18]);
@@ -1146,13 +1175,9 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   for (let i = 0; i < rowsToShow; i += 1) {
     const item = itens[i] || {};
     const peso = Number(item.peso_pu);
-    const ripeness = Number(item.maturacao);
-    const dry = Number(item.materia_seca);
     const rowVals = [
       String(i + 1),
       Number.isFinite(peso) ? peso.toFixed(3) : "-",
-      Number.isFinite(ripeness) ? ripeness.toFixed(2) : "-",
-      Number.isFinite(dry) ? dry.toFixed(4) : "-",
     ];
 
     let cx = x0 + 6;
@@ -1313,17 +1338,15 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
     itens = p.amostras_pesos_gramas.map((peso) => ({
       peso_pu: peso,
-      maturacao: p.maturacao ?? "",
-      materia_seca: p.materia_seca ?? "",
     }));
   }
+
+  const maturityLevels = formatMaturityLevelsSummary(p);
 
   const rows = itens.map((item, idx) => `
     <tr>
       <td>${idx + 1}</td>
       <td>${Number.isFinite(Number(item?.peso_pu)) ? Number(item.peso_pu).toFixed(3) : "-"}</td>
-      <td>${Number.isFinite(Number(item?.maturacao)) ? Number(item.maturacao).toFixed(2) : "-"}</td>
-      <td>${Number.isFinite(Number(item?.materia_seca)) ? Number(item.materia_seca).toFixed(4) : "-"}</td>
     </tr>
   `).join("");
 
@@ -1355,8 +1378,9 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
       <div><strong>Plot:</strong> ${escapeHtml(p.talhao || "-")}</div>
       <div><strong>Variety:</strong> ${escapeHtml(p.variedade || "-")}</div>
       <div><strong>Average Weight (g):</strong> ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
-      <div><strong>Average Ripeness:</strong> ${Number.isFinite(Number(p.maturacao)) ? Number(p.maturacao).toFixed(2) : "-"}</div>
-      <div><strong>Average Dry Matter (%):</strong> ${Number.isFinite(Number(p.materia_seca)) ? Number(p.materia_seca).toFixed(4) : "-"}</div>
+      <div><strong>Maturity:</strong> ${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
+      <div><strong>Ripeness (maturity):</strong> ${escapeHtml(maturityLevels)}</div>
+      <div><strong>Dry Matter Avg (%):</strong> ${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
       <div><strong>Fruit Count:</strong> ${escapeHtml(p.numero_frutos_analisados ?? "-")}</div>
       <div><strong>Minor Defects:</strong> ${escapeHtml(p.defeitos_leves ?? 0)}</div>
       <div><strong>Critical Defects:</strong> ${escapeHtml(p.defeitos_criticos ?? 0)}</div>
@@ -1368,12 +1392,10 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
           <tr>
             <th>Item</th>
             <th>Weight (g)</th>
-            <th>Ripeness</th>
-            <th>Dry Matter (%)</th>
           </tr>
         </thead>
         <tbody>
-          ${rows || '<tr><td colspan="4" class="muted">No sample items found.</td></tr>'}
+          ${rows || '<tr><td colspan="2" class="muted">No sample items found.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -1490,6 +1512,27 @@ async function fetchFornecedoresApi() {
   }
 }
 
+async function upsertFornecedorApi(fornecedor) {
+  const url = getCatalogoUrl();
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "ngrok-skip-browser-warning": "true",
+      ...buildAuthHeaders(),
+    },
+    body: JSON.stringify({ records: [fornecedor] }),
+  });
+  const json = await readJsonResponse(res, "Supplier save error");
+  const saved = Number(json?.saved || 0);
+  if (saved < 1) {
+    const reason = humanizeSyncError(json?.warning || json?.aviso || "processing_failure");
+    throw new Error(reason);
+  }
+  return json;
+}
+
 function fillAnaliseForm(rec) {
   const p = rec.payload_json || {};
   state.editAnaliseId = rec.id_local;
@@ -1499,19 +1542,18 @@ function fillAnaliseForm(rec) {
   coletaForm.querySelector("input[name='talhao']").value = p.talhao || "";
   coletaForm.querySelector("input[name='variedade']").value = p.variedade || "";
   coletaForm.querySelector("input[name='data_analise']").value = p.data_analise || todayDate();
-  coletaForm.querySelector("input[name='maturacao']").value = p.maturacao ?? "";
-  coletaForm.querySelector("input[name='materia_seca']").value = p.materia_seca ?? "";
+  coletaForm.querySelector("input[name='maturacao']").value = Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "";
+  coletaForm.querySelector("input[name='materia_seca']").value = p.dry_matter_avg ?? p.materia_seca ?? "";
   coletaForm.querySelector("input[name='defeitos_leves']").value = p.defeitos_leves ?? 0;
   coletaForm.querySelector("input[name='defeitos_criticos']").value = p.defeitos_criticos ?? 0;
   coletaForm.querySelector("textarea[name='observacoes']").value = p.observacoes || "";
+  fillMaturityLevels(getMaturityLevelsFromPayload(p));
 
   let itens = p.amostras_itens;
   if (!Array.isArray(itens) || !itens.length) {
     const pesos = Array.isArray(p.amostras_pesos_gramas) ? p.amostras_pesos_gramas : [];
     itens = pesos.map((peso) => ({
       peso_pu: peso,
-      maturacao: p.maturacao ?? "",
-      materia_seca: p.materia_seca ?? "",
     }));
   }
   renderAmostrasInputs(itens || null);
@@ -1737,6 +1779,14 @@ async function setupActions() {
     document.getElementById(id)?.addEventListener("input", refreshAll);
   }
 
+  for (const input of [...document.querySelectorAll("[data-maturity-level]")]) {
+    input.addEventListener("input", () => {
+      const normalized = Math.max(0, Number.parseInt(String(input.value || "0"), 10) || 0);
+      input.value = String(normalized);
+      updateAmostrasResumoAndMedia();
+    });
+  }
+
   amostrasPrevBtn?.addEventListener("click", () => {
     state.amostrasPaginaAtual = Math.max(1, state.amostrasPaginaAtual - 1);
     renderAmostrasInputs();
@@ -1830,26 +1880,41 @@ async function setupActions() {
 
   fornecedorForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const fornecedor = {
-      id: Number(document.getElementById("fornecedorId")?.value || 0),
-      nome: String(document.getElementById("fornecedorNome")?.value || "").trim(),
-      cnpj: String(document.getElementById("fornecedorCnpj")?.value || "").trim(),
-      cidade: String(document.getElementById("fornecedorCidade")?.value || "").trim(),
-      uf: String(document.getElementById("fornecedorUf")?.value || "").trim(),
-    };
+    try {
+      const fornecedor = {
+        id: Number(document.getElementById("fornecedorId")?.value || 0),
+        nome: String(document.getElementById("fornecedorNome")?.value || "").trim(),
+        cnpj: String(document.getElementById("fornecedorCnpj")?.value || "").trim(),
+        cidade: String(document.getElementById("fornecedorCidade")?.value || "").trim(),
+        uf: String(document.getElementById("fornecedorUf")?.value || "").trim(),
+      };
 
-    if (!fornecedor.id || !fornecedor.nome) {
-      feedback("Supplier requires ID and name.", true);
-      return;
+      if (!fornecedor.id || !fornecedor.nome) {
+        feedback("Supplier requires ID and name.", true);
+        return;
+      }
+
+      await upsertFornecedoresLocal([fornecedor]);
+
+      let msg = "Supplier saved locally.";
+      if (navigator.onLine) {
+        try {
+          await upsertFornecedorApi(fornecedor);
+          msg = "Supplier saved locally and sent to server.";
+        } catch (apiErr) {
+          msg = `Supplier saved locally, but failed to send to server: ${String(apiErr)}`;
+        }
+      }
+
+      state.editFornecedorId = null;
+      fornecedorForm.reset();
+      document.getElementById("fornecedorFormTitle").textContent = "Create supplier";
+      await refreshAll();
+      feedback(msg, msg.includes("failed to send"));
+      showView("view-fornecedores");
+    } catch (err) {
+      feedback(`Failed to save supplier: ${String(err)}`, true);
     }
-
-    await upsertFornecedoresLocal([fornecedor]);
-    state.editFornecedorId = null;
-    fornecedorForm.reset();
-    document.getElementById("fornecedorFormTitle").textContent = "Create supplier";
-    await refreshAll();
-    feedback("Supplier saved locally.");
-    showView("view-fornecedores");
   });
 
   coletaForm?.addEventListener("submit", async (e) => {
@@ -1857,24 +1922,31 @@ async function setupActions() {
     try {
       const fd = new FormData(coletaForm);
       const amostrasItens = coletarAmostrasItens();
+      const maturityData = parseMaturityLevelsFromForm();
+      const dryMatterAvg = Number(fd.get("materia_seca"));
       const imagensColeta = await coletarImagensColeta(state.editAnaliseImagens);
       const totalItens = amostrasItens.length;
       const pesoMedio = amostrasItens.reduce((acc, v) => acc + v.peso_pu, 0) / totalItens;
-      const materiaSecaMedia = amostrasItens.reduce((acc, v) => acc + v.materia_seca, 0) / totalItens;
-      const maturacaoMedia = amostrasItens.reduce((acc, v) => acc + v.maturacao, 0) / totalItens;
+
+      if (!Number.isFinite(dryMatterAvg) || dryMatterAvg < 0 || dryMatterAvg > 30) {
+        throw new Error("Provide Dry Matter Avg between 0 and 30.");
+      }
 
       const payload = {
         fornecedor_id: Number(fd.get("fornecedor_id")),
         talhao: String(fd.get("talhao") || ""),
         variedade: String(fd.get("variedade") || ""),
         data_analise: String(fd.get("data_analise") || todayDate()),
-        maturacao: Number(maturacaoMedia.toFixed(2)),
-        materia_seca: Number(materiaSecaMedia.toFixed(4)),
+        maturity: Number(maturityData.average.toFixed(2)),
+        maturacao: Number(maturityData.average.toFixed(2)),
+        dry_matter_avg: Number(dryMatterAvg.toFixed(4)),
+        materia_seca: Number(dryMatterAvg.toFixed(4)),
         peso_pu: Number(pesoMedio.toFixed(4)),
-        numero_frutos_analisados: totalItens,
+        numero_frutos_analisados: maturityData.total,
         defeitos_leves: Number(fd.get("defeitos_leves") || 0),
         defeitos_criticos: Number(fd.get("defeitos_criticos") || 0),
         observacoes: String(fd.get("observacoes") || ""),
+        maturity_levels: maturityData.levels,
         amostras_itens: amostrasItens,
         amostras_qtd: totalItens,
         imagens_coleta: imagensColeta,

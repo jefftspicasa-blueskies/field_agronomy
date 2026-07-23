@@ -111,6 +111,25 @@ class OcorrenciaDados(BaseModel):
     descricao: str = Field(min_length=1, max_length=1200)
 
 
+class FornecedorDados(BaseModel):
+    id: int
+    nome: str = Field(min_length=1, max_length=160)
+    cnpj: Optional[str] = Field(default=None, max_length=30)
+    cidade: Optional[str] = Field(default=None, max_length=80)
+    uf: Optional[str] = Field(default=None, max_length=2)
+
+
+class FornecedorCatalogoUpsertIn(BaseModel):
+    records: List[FornecedorDados] = Field(default_factory=list)
+    registros: List[FornecedorDados] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def merge_payloads(self):
+        if not self.records and self.registros:
+            self.records = list(self.registros)
+        return self
+
+
 TIPO_ANALISE = "analise_campo"
 TIPO_INSPECAO = "inspecao_talhao"
 TIPO_OCORRENCIA = "ocorrencia_campo"
@@ -134,6 +153,129 @@ class SyncLoteIn(BaseModel):
 _analise_adapter = TypeAdapter(AnaliseDados)
 _inspecao_adapter = TypeAdapter(InspecaoDados)
 _ocorrencia_adapter = TypeAdapter(OcorrenciaDados)
+
+
+def _nome_tabela_seguro(nome: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*", nome))
+
+
+def _colunas_da_tabela(conn, tabela: str) -> set:
+    if not _nome_tabela_seguro(tabela):
+        return set()
+    schema, nome = tabela.split(".", 1)
+    rows = conn.execute(
+        text(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = :schema
+              AND table_name = :nome
+            """
+        ),
+        {"schema": schema, "nome": nome},
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
+def _resolver_colunas_fornecedor(colunas: set) -> Optional[Dict[str, Optional[str]]]:
+    col_id = next((c for c in ("id", "id_fornecedor", "fornecedor_id") if c in colunas), None)
+    col_nome = next((c for c in ("nome", "nome_fornecedor", "fornecedor", "razao_social") if c in colunas), None)
+    if not col_id or not col_nome:
+        return None
+
+    return {
+        "id": col_id,
+        "nome": col_nome,
+        "cnpj": next((c for c in ("cnpj", "cpf_cnpj") if c in colunas), None),
+        "cidade": next((c for c in ("cidade", "municipio") if c in colunas), None),
+        "uf": next((c for c in ("uf", "estado") if c in colunas), None),
+    }
+
+
+def _upsert_fornecedor_em_tabela(conn, tabela: str, cols_map: Dict[str, Optional[str]], fornecedor: FornecedorDados):
+    params = {
+        "idv": int(fornecedor.id),
+        "nomev": fornecedor.nome,
+        "cnpjv": fornecedor.cnpj,
+        "cidadev": fornecedor.cidade,
+        "ufv": fornecedor.uf,
+    }
+
+    sets = [f"{cols_map['nome']} = :nomev"]
+    insert_cols = [str(cols_map["id"]), str(cols_map["nome"])]
+    insert_vals = [":idv", ":nomev"]
+
+    if cols_map.get("cnpj"):
+        sets.append(f"{cols_map['cnpj']} = :cnpjv")
+        insert_cols.append(str(cols_map["cnpj"]))
+        insert_vals.append(":cnpjv")
+    if cols_map.get("cidade"):
+        sets.append(f"{cols_map['cidade']} = :cidadev")
+        insert_cols.append(str(cols_map["cidade"]))
+        insert_vals.append(":cidadev")
+    if cols_map.get("uf"):
+        sets.append(f"{cols_map['uf']} = :ufv")
+        insert_cols.append(str(cols_map["uf"]))
+        insert_vals.append(":ufv")
+
+    updated = conn.execute(
+        text(
+            f"""
+            UPDATE {tabela}
+            SET {", ".join(sets)}
+            WHERE {cols_map['id']} = :idv
+            """
+        ),
+        params,
+    )
+
+    if updated.rowcount == 0:
+        conn.execute(
+            text(
+                f"""
+                INSERT INTO {tabela}
+                ({", ".join(insert_cols)})
+                VALUES ({", ".join(insert_vals)})
+                """
+            ),
+            params,
+        )
+
+
+def _resolver_tabela_fornecedores_escrita(conn) -> Optional[Tuple[str, Dict[str, Optional[str]]]]:
+    tabelas_catalogo = [
+        "trusted.fornecedores_agronomia",
+        "public.fornecedores_agronomia",
+        "trusted.tb_fornecedores_agronomia",
+        "public.tb_fornecedores_agronomia",
+    ]
+
+    for tabela in tabelas_catalogo:
+        cols = _colunas_da_tabela(conn, tabela)
+        mapped = _resolver_colunas_fornecedor(cols)
+        if mapped:
+            return tabela, mapped
+
+    candidatos = conn.execute(
+        text(
+            """
+            SELECT table_schema, table_name, array_agg(column_name) AS cols
+            FROM information_schema.columns
+            WHERE table_schema IN ('trusted', 'public')
+              AND table_name ILIKE '%fornecedor%'
+            GROUP BY table_schema, table_name
+            ORDER BY CASE WHEN table_schema = 'trusted' THEN 0 ELSE 1 END, table_name
+            """
+        )
+    ).mappings().all()
+
+    for cand in candidatos:
+        cols = set(cand["cols"] or [])
+        mapped = _resolver_colunas_fornecedor(cols)
+        if mapped:
+            return f"{cand['table_schema']}.{cand['table_name']}", mapped
+
+    return None
 
 
 def _is_api_key_enabled() -> bool:
@@ -857,6 +999,46 @@ def catalogo_fornecedores(
             "debug": {"meta": meta_debug, "errors": erros_debug},
         }
     return {"records": [], "total": 0, "warning": "catalog_unavailable"}
+
+
+@app.post("/api/agronomia/catalogos/fornecedores")
+def salvar_catalogo_fornecedores(payload: FornecedorCatalogoUpsertIn, _auth=Depends(require_sync_api_key)):
+    registros = payload.records or []
+    if not registros:
+        return {"saved": 0, "records": [], "warning": "missing_required_data"}
+
+    try:
+        with get_engine().begin() as conn:
+            target = _resolver_tabela_fornecedores_escrita(conn)
+            if not target:
+                return {"saved": 0, "records": [], "warning": "catalog_unavailable"}
+
+            tabela, cols_map = target
+            out = []
+            for reg in registros:
+                _upsert_fornecedor_em_tabela(conn, tabela, cols_map, reg)
+                out.append(
+                    {
+                        "id": int(reg.id),
+                        "nome": reg.nome,
+                        "cnpj": reg.cnpj,
+                        "cidade": reg.cidade,
+                        "uf": reg.uf,
+                    }
+                )
+
+            return {
+                "saved": len(out),
+                "records": out,
+                "source": tabela,
+            }
+    except Exception as exc:
+        return {
+            "saved": 0,
+            "records": [],
+            "warning": "processing_failure",
+            "detail": str(exc),
+        }
 
 
 @app.post("/api/agronomia/sync/lote")
