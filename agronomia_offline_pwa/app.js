@@ -1234,7 +1234,6 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       data_url: String(img?.data_url || ""),
     }))
     .filter((img) => img.data_url.startsWith("data:image/jpeg") || img.data_url.startsWith("data:image/jpg"))
-    .slice(0, 3)
     .map((img) => {
       const bytes = base64DataUrlToBytes(img.data_url);
       const dim = bytes ? getJpegDimensions(bytes) : null;
@@ -1406,18 +1405,31 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   }
 
   if (imagens.length) {
-    pushText(currentPage, "/F2", 12, 50, imageTitleY, "Collected Images", [0.1, 0.16, 0.24]);
-
-    const startY = imageTitleY - 10;
     const boxes = [
       { x: 50, w: 160, h: 100 },
       { x: 220, w: 160, h: 100 },
       { x: 390, w: 160, h: 100 },
     ];
+    const perPage = boxes.length;
+    const totalPages = Math.ceil(imagens.length / perPage);
 
-    for (let i = 0; i < imagens.length && i < boxes.length; i += 1) {
-      const box = boxes[i];
-      const img = imagens[i];
+    for (let pageIdx = 0; pageIdx < totalPages; pageIdx += 1) {
+      if (pageIdx > 0) {
+        currentPage = createPage();
+        drawPageHeader(currentPage);
+        imageTitleY = 748;
+      }
+
+      const pageStart = pageIdx * perPage;
+      const pageEnd = Math.min(pageStart + perPage, imagens.length);
+      const title = pageIdx === 0 ? "Collected Images" : `Collected Images (cont. ${pageIdx + 1}/${totalPages})`;
+
+      pushText(currentPage, "/F2", 12, 50, imageTitleY, title, [0.1, 0.16, 0.24]);
+
+      const startY = imageTitleY - 10;
+      for (let i = pageStart; i < pageEnd; i += 1) {
+        const box = boxes[i - pageStart];
+        const img = imagens[i];
       const ratio = img.width / img.height;
       let drawW = box.w;
       let drawH = drawW / ratio;
@@ -1437,10 +1449,11 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       // image
       currentPage.push("q");
       currentPage.push(`${drawW} 0 0 ${drawH} ${x} ${yImg} cm`);
-      currentPage.push(`/Im${i + 1} Do`);
+        currentPage.push(`/Im${i + 1} Do`);
       currentPage.push("Q");
 
-      pushText(currentPage, "/F1", 8, box.x, startY - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
+        pushText(currentPage, "/F1", 8, box.x, startY - box.h - 10, `${i + 1}. ${img.nome}`, [0.24, 0.28, 0.32]);
+      }
     }
   }
 
@@ -2269,12 +2282,12 @@ if ("serviceWorker" in navigator) {
       const scriptUrl = String(
         reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || ""
       );
-      if (scriptUrl.includes("sw.js?v=24")) return null;
+      if (scriptUrl.includes("sw.js?v=25")) return null;
       return reg.unregister().catch(() => null);
     })))
     .catch(() => {});
 
-  navigator.serviceWorker.register("./sw.js?v=24", { updateViaCache: "none" })
+  navigator.serviceWorker.register("./sw.js?v=25", { updateViaCache: "none" })
     .then((registration) => {
       registration.update().catch(() => {});
       setTimeout(() => registration.update().catch(() => {}), 1200);
