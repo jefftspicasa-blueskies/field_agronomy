@@ -699,6 +699,71 @@ async function readJsonResponse(res, contextLabel) {
   return JSON.parse(body);
 }
 
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeAnalisePayloadForSync(payload) {
+  const p = { ...(payload || {}) };
+  const itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
+
+  const rawDry = Number(p.dry_matter_avg ?? p.materia_seca);
+  const defaultDry = Number.isFinite(rawDry) ? Number(clampNumber(rawDry, 0, 30).toFixed(4)) : null;
+
+  const rawMat = Number(p.maturity ?? p.maturacao);
+  const defaultMaturacao = Number.isFinite(rawMat)
+    ? Math.round(clampNumber(rawMat, 1, 5))
+    : null;
+
+  if (itens.length) {
+    const normalizedItens = itens
+      .map((item) => {
+        const peso = Number(item?.peso_pu);
+        if (!Number.isFinite(peso) || peso <= 0) return null;
+
+        const itemMatRaw = Number(item?.maturacao);
+        const itemMsRaw = Number(item?.materia_seca);
+
+        const itemMaturacao = Number.isFinite(itemMatRaw)
+          ? Math.round(clampNumber(itemMatRaw, 1, 5))
+          : (defaultMaturacao ?? 1);
+
+        const itemMateriaSeca = Number.isFinite(itemMsRaw)
+          ? Number(clampNumber(itemMsRaw, 0, 30).toFixed(4))
+          : (defaultDry ?? 0);
+
+        return {
+          peso_pu: Number(peso.toFixed(AMOSTRA_DECIMAIS)),
+          maturacao: itemMaturacao,
+          materia_seca: itemMateriaSeca,
+        };
+      })
+      .filter(Boolean);
+
+    if (normalizedItens.length) {
+      p.amostras_itens = normalizedItens;
+      return p;
+    }
+  }
+
+  delete p.amostras_itens;
+
+  const frutas = Number(p.numero_frutos_analisados ?? p.amostras_qtd);
+  p.numero_frutos_analisados = Number.isFinite(frutas) && frutas > 0 ? Math.round(frutas) : 1;
+
+  const pesoMedio = Number(p.peso_pu);
+  p.peso_pu = Number.isFinite(pesoMedio) && pesoMedio >= 0 ? Number(pesoMedio.toFixed(4)) : 0;
+
+  if (defaultDry != null) {
+    p.materia_seca = defaultDry;
+  }
+  if (defaultMaturacao != null) {
+    p.maturacao = Number(defaultMaturacao.toFixed(2));
+  }
+
+  return p;
+}
+
 async function syncNow() {
   if (!navigator.onLine) return;
   const apiUrl = getApiUrl();
@@ -743,7 +808,9 @@ async function syncNow() {
         id_local: r.id_local,
         tipo_registro: r.tipo_registro,
         criado_em_local: r.criado_em_local,
-        dados: r.payload_json,
+        dados: r.tipo_registro === TIPO_ANALISE
+          ? normalizeAnalisePayloadForSync(r.payload_json)
+          : r.payload_json,
       })),
     };
 
@@ -2197,7 +2264,17 @@ window.addEventListener("online", async () => {
 window.addEventListener("offline", updateNetStatus);
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+  navigator.serviceWorker.getRegistrations()
+    .then((registrations) => Promise.all(registrations.map((reg) => {
+      const scriptUrl = String(
+        reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || ""
+      );
+      if (scriptUrl.includes("sw.js?v=24")) return null;
+      return reg.unregister().catch(() => null);
+    })))
+    .catch(() => {});
+
+  navigator.serviceWorker.register("./sw.js?v=24", { updateViaCache: "none" })
     .then((registration) => {
       registration.update().catch(() => {});
       setTimeout(() => registration.update().catch(() => {}), 1200);
