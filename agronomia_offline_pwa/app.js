@@ -1049,6 +1049,7 @@ function concatUint8Arrays(parts) {
 
 function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const p = rec.payload_json || {};
+  const maturityLevels = getMaturityLevelsFromPayload(p);
 
   let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
@@ -1105,8 +1106,13 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     ["Plot", p.talhao || "-"],
     ["Variety", p.variedade || "-"],
     ["Average Weight (g)", Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"],
-    ["Maturity", Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"],
-    ["Ripeness (maturity)", formatMaturityLevelsSummary(p)],
+    ["Maturity (avg)", Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"],
+    ["Ripeness L1", String(maturityLevels.maturity_level_1 ?? 0)],
+    ["Ripeness L1.5", String(maturityLevels.maturity_level_1_5 ?? 0)],
+    ["Ripeness L2", String(maturityLevels.maturity_level_2 ?? 0)],
+    ["Ripeness L2.5", String(maturityLevels.maturity_level_2_5 ?? 0)],
+    ["Ripeness L3", String(maturityLevels.maturity_level_3 ?? 0)],
+    ["Ripeness L3.5", String(maturityLevels.maturity_level_3_5 ?? 0)],
     ["Dry Matter Avg (%)", Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"],
     ["Fruit Count", String(p.numero_frutos_analisados ?? "-")],
     ["Minor Defects", String(p.defeitos_leves ?? 0)],
