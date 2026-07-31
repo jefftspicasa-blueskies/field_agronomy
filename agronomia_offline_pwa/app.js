@@ -1305,15 +1305,66 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     y -= 16;
   }
 
+  // Função auxiliar para adicionar texto longo com quebra de linha e paginação
+  const addWrappedText = (pageRef, text, x, yPos, maxWidth = 88, lineHeight = 14, maxY = 70) => {
+    // Divide o texto em palavras
+    const words = text.split(' ');
+    let currentLine = '';
+    let currentY = yPos;
+    let currentPage = pageRef;
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      
+      // Se a linha atual + nova palavra exceder a largura máxima
+      if (testLine.length > maxWidth && currentLine) {
+        // Verifica se precisa de nova página
+        if (currentY - lineHeight < maxY) {
+          currentPage = createPage();
+          drawPageHeader(currentPage);
+          currentY = 748; // Reinicia Y no topo da nova página
+          pushText(currentPage, "/F2", 10, x, currentY, "Notes (continued):", [0.1, 0.16, 0.24]);
+          currentY -= 20;
+        }
+        
+        // Escreve a linha atual
+        pushText(currentPage, "/F1", 10, x, currentY, currentLine, [0.08, 0.12, 0.18]);
+        currentY -= lineHeight;
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    
+    // Escreve a última linha
+    if (currentLine) {
+      if (currentY - lineHeight < maxY) {
+        currentPage = createPage();
+        drawPageHeader(currentPage);
+        currentY = 748;
+        pushText(currentPage, "/F2", 10, x, currentY, "Notes (continued):", [0.1, 0.16, 0.24]);
+        currentY -= 20;
+      }
+      pushText(currentPage, "/F1", 10, x, currentY, currentLine, [0.08, 0.12, 0.18]);
+      currentY -= lineHeight;
+    }
+    
+    return { page: currentPage, y: currentY };
+  };
+
   pushText(currentPage, "/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
   const notes = String(p.observacoes || "-");
-  const notesChunks = notes.match(/.{1,88}/g) || ["-"];
-  let notesY = y;
-  for (const chunk of notesChunks.slice(0, 2)) {
-    pushText(currentPage, "/F1", 10, 210, notesY, chunk, [0.08, 0.12, 0.18]);
-    notesY -= 14;
+  
+  if (notes.length > 88 || notes.includes('\n')) {
+    // Para textos longos, usa quebra por palavras
+    const result = addWrappedText(currentPage, notes, 210, y, 88, 14, 70);
+    currentPage = result.page;
+    y = result.y;
+  } else {
+    // Para textos curtos, comportamento original
+    pushText(currentPage, "/F1", 10, 210, y, notes, [0.08, 0.12, 0.18]);
+    y -= 14;
   }
-
   // Samples table layout and pagination
   const x0 = 50;
   const colW = [70, 430];
