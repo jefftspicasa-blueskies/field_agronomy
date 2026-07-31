@@ -1254,8 +1254,8 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     return page;
   };
 
-  const pushText = (page, fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
-    const txt = escapePdfText(value);//.slice(0, 140);
+    const pushText = (page, fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
+    const txt = escapePdfText(value);
     page.push("BT");
     page.push(`${color[0]} ${color[1]} ${color[2]} rg`);
     page.push(`${fontAlias} ${size} Tf`);
@@ -1305,73 +1305,95 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     y -= 16;
   }
 
-  // Função auxiliar para adicionar texto longo com quebra de linha e paginação
-  const addWrappedText = (pageRef, text, x, yPos, maxWidth = 88, lineHeight = 14, maxY = 70) => {
-    // Divide o texto em palavras
-    const words = text.split(' ');
-    let currentLine = '';
-    let currentY = yPos;
-    let currentPage = pageRef;
-    
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      
-      // Se a linha atual + nova palavra exceder a largura máxima
-      if (testLine.length > maxWidth && currentLine) {
-        // Verifica se precisa de nova página
-        if (currentY - lineHeight < maxY) {
-          currentPage = createPage();
-          drawPageHeader(currentPage);
-          currentY = 748; // Reinicia Y no topo da nova página
-          pushText(currentPage, "/F2", 10, x, currentY, "Notes (continued):", [0.1, 0.16, 0.24]);
-          currentY -= 20;
-        }
-        
-        // Escreve a linha atual
-        pushText(currentPage, "/F1", 10, x, currentY, currentLine, [0.08, 0.12, 0.18]);
-        currentY -= lineHeight;
-        currentLine = word;
+   // Função para calcular largura aproximada do texto em pontos PDF
+  const measureTextWidth = (text, fontSize = 10) => {
+    let width = 0;
+    for (const ch of text) {
+      if (/[WMmw]/.test(ch)) {
+        width += fontSize * 0.7;
+      } else if (/[ilI1\s.,:;!'|]/.test(ch)) {
+        width += fontSize * 0.3;
       } else {
-        currentLine = testLine;
+        width += fontSize * 0.5;
       }
     }
-    
-    // Escreve a última linha
-    if (currentLine) {
-      if (currentY - lineHeight < maxY) {
-        currentPage = createPage();
-        drawPageHeader(currentPage);
-        currentY = 748;
-        pushText(currentPage, "/F2", 10, x, currentY, "Notes (continued):", [0.1, 0.16, 0.24]);
-        currentY -= 20;
-      }
-      pushText(currentPage, "/F1", 10, x, currentY, currentLine, [0.08, 0.12, 0.18]);
-      currentY -= lineHeight;
-    }
-    
-    return { page: currentPage, y: currentY };
+    return width;
   };
 
+  // Função para quebrar texto em linhas que cabem na largura máxima
+  const wrapTextToWidth = (text, maxWidthPoints, fontSize = 10) => {
+    const paragraphs = text.split('\n');
+    const lines = [];
+    
+    for (const paragraph of paragraphs) {
+      if (!paragraph.trim()) {
+        lines.push('');
+        continue;
+      }
+      
+      const words = paragraph.split(' ');
+      let currentLine = '';
+      
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const lineWidth = measureTextWidth(testLine, fontSize);
+        
+        if (lineWidth > maxWidthPoints && currentLine) {
+          lines.push(currentLine.trim());
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      
+      if (currentLine) {
+        lines.push(currentLine.trim());
+      }
+    }
+    
+    return lines;
+  };
+
+  // Escreve o título "Notes:"
   pushText(currentPage, "/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
-  const notes = String(p.observacoes || "-");
   
-  if (notes.length > 88 || notes.includes('\n')) {
-    // Para textos longos, usa quebra por palavras
-    const result = addWrappedText(currentPage, notes, 210, y, 88, 14, 70);
-    currentPage = result.page;
-    y = result.y;
-  } else {
-    // Para textos curtos, comportamento original
-    pushText(currentPage, "/F1", 10, 210, y, notes, [0.08, 0.12, 0.18]);
-    y -= 14;
+  const notes = String(p.observacoes || "-");
+  const maxWidthPoints = 370;
+  const lineHeight = 14;
+  const pageBottomNotes = 70;
+  
+  // Quebra o texto em linhas baseado na largura real
+  const wrappedLines = wrapTextToWidth(notes, maxWidthPoints, 10);
+  
+  let noteY = y;
+  
+  for (const line of wrappedLines) {
+    // Verifica se precisa de nova página
+    if (noteY - lineHeight < pageBottomNotes) {
+      currentPage = createPage();
+      drawPageHeader(currentPage);
+      noteY = 748;
+      
+      // Adiciona cabeçalho de continuação
+      pushText(currentPage, "/F2", 10, 50, noteY, "Notes (continued):", [0.1, 0.16, 0.24]);
+      noteY -= 20;
+    }
+    
+    pushText(currentPage, "/F1", 10, 210, noteY, line, [0.08, 0.12, 0.18]);
+    noteY -= lineHeight;
   }
+  
+  // Atualiza Y para continuar o layout do resto do PDF
+  y = noteY;
+
+  // Samples table layout and pagination
   // Samples table layout and pagination
   const x0 = 50;
   const colW = [70, 430];
   const rowH = 18;
   const tableWidth = colW.reduce((a, b) => a + b, 0);
   const pageBottom = 70;
-  let tableTop = notesY - 22;
+  let tableTop = y - 22;  // ← CORRIGIDO: y em vez de notesY
   let cursor = 0;
   const totalItens = itens.length;
 
