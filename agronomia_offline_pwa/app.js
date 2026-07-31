@@ -1255,7 +1255,7 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   };
 
   const pushText = (page, fontAlias, size, x, y, value, color = [0.08, 0.12, 0.18]) => {
-    const txt = escapePdfText(value).slice(0, 140);
+    const txt = escapePdfText(value);//.slice(0, 140);
     page.push("BT");
     page.push(`${color[0]} ${color[1]} ${color[2]} rg`);
     page.push(`${fontAlias} ${size} Tf`);
