@@ -1108,7 +1108,7 @@ function escapePdfText(value) {
     "Ÿ": 159,
   };
 
-  const text = String(value ?? "").replace(/[\r\n\t]/g, " ");
+  const text = String(value ?? "").replace(/[\r\t]/g, " ");  // Não substitui \n!
   let out = "";
 
   for (const ch of text) {
@@ -1306,39 +1306,70 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   }
 
    // Função para calcular largura aproximada do texto em pontos PDF
+  // Função para calcular largura do texto em pontos PDF (Helvetica 10pt)
+  const charWidths = {
+    // Caracteres estreitos
+    'i': 2.8, 'l': 2.8, 'I': 3.3, '1': 5.0, '!': 3.3, '|': 3.3,
+    '.': 2.8, ',': 2.8, ':': 2.8, ';': 2.8, "'": 2.2, ' ': 2.8,
+    // Caracteres largos
+    'W': 9.4, 'w': 7.8, 'M': 8.9, 'm': 8.3,
+    // Default
+    'default': 5.6
+  };
+
   const measureTextWidth = (text, fontSize = 10) => {
+    const scale = fontSize / 10;
     let width = 0;
     for (const ch of text) {
-      if (/[WMmw]/.test(ch)) {
-        width += fontSize * 0.7;
-      } else if (/[ilI1\s.,:;!'|]/.test(ch)) {
-        width += fontSize * 0.3;
-      } else {
-        width += fontSize * 0.5;
-      }
+      width += (charWidths[ch] || charWidths['default']) * scale;
     }
     return width;
   };
 
-  // Função para quebrar texto em linhas que cabem na largura máxima
+    // Função para quebrar texto preservando quebras de linha
   const wrapTextToWidth = (text, maxWidthPoints, fontSize = 10) => {
-    const paragraphs = text.split('\n');
+    // Divide por \n (que agora está preservado no escapePdfText)
+    // O escapePdfText escapou os caracteres especiais mas manteve \n como está
+    const rawLines = text.split('\n');
     const lines = [];
     
-    for (const paragraph of paragraphs) {
-      if (!paragraph.trim()) {
+    for (const rawLine of rawLines) {
+      // Linha vazia = parágrafo em branco
+      if (!rawLine.trim()) {
         lines.push('');
         continue;
       }
       
-      const words = paragraph.split(' ');
+      const words = rawLine.split(' ');
       let currentLine = '';
       
       for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const lineWidth = measureTextWidth(testLine, fontSize);
+        if (!word) continue;
         
-        if (lineWidth > maxWidthPoints && currentLine) {
+        // Palavra única muito longa
+        if (measureTextWidth(word, fontSize) > maxWidthPoints) {
+          if (currentLine) {
+            lines.push(currentLine.trim());
+            currentLine = '';
+          }
+          // Quebra caractere por caractere
+          let remaining = word;
+          while (remaining) {
+            let chunk = '';
+            for (const ch of remaining) {
+              if (measureTextWidth(chunk + ch, fontSize) > maxWidthPoints) break;
+              chunk += ch;
+            }
+            if (!chunk) chunk = remaining[0];
+            lines.push(chunk);
+            remaining = remaining.slice(chunk.length);
+          }
+          continue;
+        }
+        
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        
+        if (measureTextWidth(testLine, fontSize) > maxWidthPoints && currentLine) {
           lines.push(currentLine.trim());
           currentLine = word;
         } else {
@@ -1346,7 +1377,7 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
         }
       }
       
-      if (currentLine) {
+      if (currentLine.trim()) {
         lines.push(currentLine.trim());
       }
     }
@@ -1358,11 +1389,12 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   pushText(currentPage, "/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
   
   const notes = String(p.observacoes || "-");
-  const maxWidthPoints = 370;
+  // Largura disponível: página 595pt - margem esquerda 210pt - margem direita 40pt = 345pt
+  const maxWidthPoints = 340;
   const lineHeight = 14;
   const pageBottomNotes = 70;
   
-  // Quebra o texto em linhas baseado na largura real
+  // Quebra o texto em linhas
   const wrappedLines = wrapTextToWidth(notes, maxWidthPoints, 10);
   
   let noteY = y;
