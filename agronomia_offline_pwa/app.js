@@ -2425,12 +2425,12 @@ if ("serviceWorker" in navigator) {
       const scriptUrl = String(
         reg.active?.scriptURL || reg.waiting?.scriptURL || reg.installing?.scriptURL || ""
       );
-      if (scriptUrl.includes("sw.js?v=26")) return null;
+      if (scriptUrl.includes("sw.js?v=27")) return null;
       return reg.unregister().catch(() => null);
     })))
     .catch(() => {});
 
-  navigator.serviceWorker.register("./sw.js?v=26", { updateViaCache: "none" })
+  navigator.serviceWorker.register("./sw.js?v=27", { updateViaCache: "none" })
     .then((registration) => {
       registration.update().catch(() => {});
       setTimeout(() => registration.update().catch(() => {}), 1200);
