@@ -465,6 +465,25 @@ function formatMaturityLevelsSummary(payload) {
     .join(" | ");
 }
 
+function getDefectStats(payload) {
+  const fruitCount = Math.max(0, Number.parseInt(String(payload?.numero_frutos_analisados ?? "0"), 10) || 0);
+  const minorDefects = Math.max(0, Number.parseInt(String(payload?.defeitos_leves ?? "0"), 10) || 0);
+  const criticalDefects = Math.max(0, Number.parseInt(String(payload?.defeitos_criticos ?? "0"), 10) || 0);
+  const noDefects = Math.max(0, fruitCount - minorDefects - criticalDefects);
+
+  const toPercent = (count) => (fruitCount > 0 ? (count / fruitCount) * 100 : 0);
+
+  return {
+    fruitCount,
+    minorDefects,
+    criticalDefects,
+    noDefects,
+    minorPercent: toPercent(minorDefects),
+    criticalPercent: toPercent(criticalDefects),
+    noDefectsPercent: toPercent(noDefects),
+  };
+}
+
 function updateImagensResumo() {
   if (!imagensResumo || !coletaImagensInput) return;
   const qtd = coletaImagensInput.files?.length || 0;
@@ -982,6 +1001,7 @@ async function renderAnalisesTable() {
 
 function buildAnaliseReportHtml(rec, fornecedorNome) {
   const p = rec.payload_json || {};
+  const defectStats = getDefectStats(p);
 
   let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
@@ -1019,6 +1039,7 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
         th { background: #eef4fb; }
         .section-title { margin-top: 20px; font-size: 16px; font-weight: 700; }
         .small { color: #4e6478; font-size: 12px; }
+        .notes-value { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
         @media print { body { margin: 10mm; } }
       </style>
     </head>
@@ -1034,10 +1055,11 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
         <div><b>Maturity:</b> ${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
         <div><b>Ripeness (maturity):</b> ${escapeHtml(maturityLevels)}</div>
         <div><b>Dry Matter Avg (%):</b> ${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
-        <div><b>Fruit Count:</b> ${escapeHtml(p.numero_frutos_analisados ?? "-")}</div>
-        <div><b>Minor Defects:</b> ${escapeHtml(p.defeitos_leves ?? 0)}</div>
-        <div><b>Critical Defects:</b> ${escapeHtml(p.defeitos_criticos ?? 0)}</div>
-        <div><b>Notes:</b> ${escapeHtml(p.observacoes || "-")}</div>
+        <div><b>Fruit Count:</b> ${escapeHtml(defectStats.fruitCount)}</div>
+        <div><b>Minor Defects:</b> ${escapeHtml(defectStats.minorDefects)} (${escapeHtml(formatPercentValue(defectStats.minorPercent))})</div>
+        <div><b>Critical Defects:</b> ${escapeHtml(defectStats.criticalDefects)} (${escapeHtml(formatPercentValue(defectStats.criticalPercent))})</div>
+        <div><b>No Defects:</b> ${escapeHtml(defectStats.noDefects)} (${escapeHtml(formatPercentValue(defectStats.noDefectsPercent))})</div>
+        <div><b>Notes:</b> <span class="notes-value">${escapeHtml(p.observacoes || "-")}</span></div>
       </div>
 
       <div class="section-title">Collected Samples</div>
@@ -1216,6 +1238,7 @@ function concatUint8Arrays(parts) {
 
 function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const p = rec.payload_json || {};
+  const defectStats = getDefectStats(p);
   const maturityLevels = getMaturityLevelsFromPayload(p);
   const maturityTotal = MATURITY_LEVELS
     .reduce((acc, level) => acc + (Math.max(0, Number.parseInt(String(maturityLevels[level.key] ?? "0"), 10) || 0)), 0);
@@ -1264,6 +1287,22 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     page.push("ET");
   };
 
+  const splitTextByChars = (value, maxChars = 88) => {
+    const text = String(value ?? "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!text) return ["-"];
+
+    const parts = [];
+    let remaining = text;
+    while (remaining.length > maxChars) {
+      const cut = remaining.lastIndexOf(" ", maxChars);
+      const idx = cut > Math.floor(maxChars * 0.5) ? cut : maxChars;
+      parts.push(remaining.slice(0, idx).trim());
+      remaining = remaining.slice(idx).trim();
+    }
+    if (remaining.length) parts.push(remaining);
+    return parts;
+  };
+
   const drawPageHeader = (page) => {
     page.push("0.09 0.36 0.65 rg");
     page.push("40 785 515 35 re f");
@@ -1293,9 +1332,10 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     ["Ripeness L3", `${maturityLevels.maturity_level_3 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3)})`],
     ["Ripeness L3.5", `${maturityLevels.maturity_level_3_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3_5)})`],
     ["Dry Matter Avg (%)", Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"],
-    ["Fruit Count", String(p.numero_frutos_analisados ?? "-")],
-    ["Minor Defects", String(p.defeitos_leves ?? 0)],
-    ["Critical Defects", String(p.defeitos_criticos ?? 0)],
+    ["Fruit Count", String(defectStats.fruitCount)],
+    ["Minor Defects", `${defectStats.minorDefects} (${formatPercentValue(defectStats.minorPercent)})`],
+    ["Critical Defects", `${defectStats.criticalDefects} (${formatPercentValue(defectStats.criticalPercent)})`],
+    ["No Defects", `${defectStats.noDefects} (${formatPercentValue(defectStats.noDefectsPercent)})`],
   ];
 
   let y = 748;
@@ -1421,7 +1461,13 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   // Samples table layout and pagination
   // Samples table layout and pagination
   const x0 = 50;
-  const colW = [70, 430];
+  const sampleColumns = 3;
+  const sampleBlockWidth = 500 / sampleColumns;
+  const sampleIndexWidth = 30;
+  const colW = [];
+  for (let i = 0; i < sampleColumns; i += 1) {
+    colW.push(sampleIndexWidth, sampleBlockWidth - sampleIndexWidth);
+  }
   const rowH = 18;
   const tableWidth = colW.reduce((a, b) => a + b, 0);
   const pageBottom = 70;
@@ -1453,26 +1499,27 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       page.push(`${xLine} ${y0} m ${xLine} ${y0 - totalRows * rowH} l S`);
     }
 
-    const headers = ["Item", "Weight (g)"];
-    let hx = x0 + 6;
-    for (let i = 0; i < headers.length; i += 1) {
-      pushText(page, "/F2", 10, hx, y0 - 13, headers[i], [0.08, 0.12, 0.18]);
-      hx += colW[i];
+    for (let c = 0; c < sampleColumns; c += 1) {
+      const base = c * 2;
+      const hx = x0 + colW.slice(0, base).reduce((acc, w) => acc + w, 0) + 6;
+      pushText(page, "/F2", 10, hx, y0 - 13, "Item", [0.08, 0.12, 0.18]);
+      pushText(page, "/F2", 10, hx + colW[base], y0 - 13, "Weight (g)", [0.08, 0.12, 0.18]);
     }
 
     for (let i = 0; i < chunkRows; i += 1) {
-      const item = itens[startIndex + i] || {};
-      const peso = Number(item.peso_pu);
-      const rowVals = [
-        String(startIndex + i + 1),
-        Number.isFinite(peso) ? peso.toFixed(3) : "-",
-      ];
-
-      let cx = x0 + 6;
       const cy = y0 - rowH * (i + 1) - 13;
-      for (let c = 0; c < rowVals.length; c += 1) {
-        pushText(page, "/F1", 10, cx, cy, rowVals[c], [0.06, 0.08, 0.1]);
-        cx += colW[c];
+      for (let c = 0; c < sampleColumns; c += 1) {
+        const base = c * 2;
+        const idx = startIndex + i + c * chunkRows;
+        const item = itens[idx] || {};
+        const peso = Number(item.peso_pu);
+        const rowVals = idx < totalItens
+          ? [String(idx + 1), Number.isFinite(peso) ? peso.toFixed(3) : "-"]
+          : ["", ""];
+
+        const cx = x0 + colW.slice(0, base).reduce((acc, w) => acc + w, 0) + 6;
+        pushText(page, "/F1", 10, cx, cy, rowVals[0], [0.06, 0.08, 0.1]);
+        pushText(page, "/F1", 10, cx + colW[base], cy, rowVals[1], [0.06, 0.08, 0.1]);
       }
     }
 
@@ -1488,10 +1535,10 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
       const baseY = cursor === 0 ? tableTop : 760;
       const y0 = baseY - 8;
       const availableRows = Math.max(1, Math.floor((y0 - pageBottom) / rowH) - 1);
-      const chunkRows = Math.min(availableRows, totalItens - cursor);
+      const chunkRows = Math.min(availableRows, Math.ceil((totalItens - cursor) / sampleColumns));
       const title = cursor === 0 ? "Collected Samples" : "Collected Samples (cont.)";
       const tableBottom = drawTableChunk(currentPage, title, baseY, cursor, chunkRows);
-      cursor += chunkRows;
+      cursor += chunkRows * sampleColumns;
       tableTop = tableBottom;
       if (cursor < totalItens) {
         currentPage = createPage();
@@ -1666,6 +1713,7 @@ function closeAnaliseImagePopup() {
 function renderAnaliseDetailView(rec, fornecedorNome) {
   if (!analiseDetalheContent) return;
   const p = rec.payload_json || {};
+  const defectStats = getDefectStats(p);
 
   let itens = Array.isArray(p.amostras_itens) ? p.amostras_itens : [];
   if (!itens.length && Array.isArray(p.amostras_pesos_gramas)) {
@@ -1714,10 +1762,11 @@ function renderAnaliseDetailView(rec, fornecedorNome) {
       <div><strong>Maturity:</strong> ${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
       <div><strong>Ripeness (maturity):</strong> ${escapeHtml(maturityLevels)}</div>
       <div><strong>Dry Matter Avg (%):</strong> ${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
-      <div><strong>Fruit Count:</strong> ${escapeHtml(p.numero_frutos_analisados ?? "-")}</div>
-      <div><strong>Minor Defects:</strong> ${escapeHtml(p.defeitos_leves ?? 0)}</div>
-      <div><strong>Critical Defects:</strong> ${escapeHtml(p.defeitos_criticos ?? 0)}</div>
-      <div><strong>Notes:</strong> ${escapeHtml(p.observacoes || "-")}</div>
+      <div><strong>Fruit Count:</strong> ${escapeHtml(defectStats.fruitCount)}</div>
+      <div><strong>Minor Defects:</strong> ${escapeHtml(defectStats.minorDefects)} (${escapeHtml(formatPercentValue(defectStats.minorPercent))})</div>
+      <div><strong>Critical Defects:</strong> ${escapeHtml(defectStats.criticalDefects)} (${escapeHtml(formatPercentValue(defectStats.criticalPercent))})</div>
+      <div><strong>No Defects:</strong> ${escapeHtml(defectStats.noDefects)} (${escapeHtml(formatPercentValue(defectStats.noDefectsPercent))})</div>
+      <div><strong>Notes:</strong> <span class="analise-notes-value">${escapeHtml(p.observacoes || "-")}</span></div>
     </div>
     <div class="table-wrap">
       <table class="analises-table">

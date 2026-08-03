@@ -719,6 +719,13 @@ tbody tr:hover {
 	font-size: 0.8rem;
 }
 
+.analise-notes-value {
+	display: inline;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
 .analise-images-block {
 	margin-top: 14px;
 }
