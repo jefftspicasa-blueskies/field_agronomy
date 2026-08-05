@@ -1096,8 +1096,27 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
         .meta {
           margin: 0 0 18px 0;
           display: grid;
+          gap: 12px;
+        }
+        .meta-group {
+          border: 1px solid #cfd8e3;
+          border-radius: 8px;
+          overflow: hidden;
+          background: #fff;
+        }
+        .meta-group-title {
+          background: #eaf2fb;
+          color: #1f3f5a;
+          font-weight: 700;
+          font-size: 13px;
+          padding: 8px 10px;
+          border-bottom: 1px solid #cfd8e3;
+        }
+        .meta-group-grid {
+          display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 8px;
+          padding: 8px;
         }
         .meta-item {
           border: 1px solid #cfd8e3;
@@ -1119,7 +1138,7 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
         .section-title { margin-top: 20px; font-size: 16px; font-weight: 700; }
         .small { color: #4e6478; font-size: 12px; }
         .notes-value { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-        @media (max-width: 720px) { .meta { grid-template-columns: 1fr; } }
+        @media (max-width: 720px) { .meta-group-grid { grid-template-columns: 1fr; } }
         @media print { body { margin: 10mm; } }
       </style>
     </head>
@@ -1127,19 +1146,42 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
       <h1>Analysis Report</h1>
       <p class="small">Local ID: ${escapeHtml(rec.id_local || "-")}</p>
       <div class="meta">
-        <div class="meta-item"><b>Date</b>${escapeHtml(p.data_analise || "-")}</div>
-        <div class="meta-item"><b>Supplier</b>${escapeHtml(fornecedorNome || "-")}</div>
-        <div class="meta-item"><b>Plot</b>${escapeHtml(p.talhao || "-")}</div>
-        <div class="meta-item"><b>Variety</b>${escapeHtml(p.variedade || "-")}</div>
-        <div class="meta-item"><b>Average Weight (g)</b>${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
-        <div class="meta-item"><b>Maturity</b>${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
-        <div class="meta-item full"><b>Ripeness (maturity)</b>${escapeHtml(maturityLevels)}</div>
-        <div class="meta-item"><b>Dry Matter Avg (%)</b>${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
-        <div class="meta-item"><b>Fruit Count</b>${escapeHtml(defectStats.fruitCount)}</div>
-        <div class="meta-item"><b>Minor Defects</b>${escapeHtml(defectStats.minorDefects)} (${escapeHtml(formatPercentValue(defectStats.minorPercent))})</div>
-        <div class="meta-item"><b>Critical Defects</b>${escapeHtml(defectStats.criticalDefects)} (${escapeHtml(formatPercentValue(defectStats.criticalPercent))})</div>
-        <div class="meta-item"><b>Without Defects</b>${escapeHtml(defectStats.noDefects)} (${escapeHtml(formatPercentValue(defectStats.noDefectsPercent))})</div>
-        <div class="meta-item full"><b>Notes</b><span class="notes-value">${escapeHtml(p.observacoes || "-")}</span></div>
+        <div class="meta-group">
+          <div class="meta-group-title">General</div>
+          <div class="meta-group-grid">
+            <div class="meta-item"><b>Date</b>${escapeHtml(p.data_analise || "-")}</div>
+            <div class="meta-item"><b>Supplier</b>${escapeHtml(fornecedorNome || "-")}</div>
+            <div class="meta-item"><b>Plot</b>${escapeHtml(p.talhao || "-")}</div>
+            <div class="meta-item"><b>Variety</b>${escapeHtml(p.variedade || "-")}</div>
+            <div class="meta-item"><b>Average Weight (g)</b>${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
+            <div class="meta-item"><b>Maturity</b>${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
+            <div class="meta-item"><b>Dry Matter Avg (%)</b>${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
+          </div>
+        </div>
+
+        <div class="meta-group">
+          <div class="meta-group-title">Ripeness (maturity)</div>
+          <div class="meta-group-grid">
+            <div class="meta-item full"><b>Distribution</b>${escapeHtml(maturityLevels)}</div>
+          </div>
+        </div>
+
+        <div class="meta-group">
+          <div class="meta-group-title">Defects</div>
+          <div class="meta-group-grid">
+            <div class="meta-item"><b>Fruit Count</b>${escapeHtml(defectStats.fruitCount)}</div>
+            <div class="meta-item"><b>Minor Defects</b>${escapeHtml(defectStats.minorDefects)} (${escapeHtml(formatPercentValue(defectStats.minorPercent))})</div>
+            <div class="meta-item"><b>Critical Defects</b>${escapeHtml(defectStats.criticalDefects)} (${escapeHtml(formatPercentValue(defectStats.criticalPercent))})</div>
+            <div class="meta-item"><b>Without Defects</b>${escapeHtml(defectStats.noDefects)} (${escapeHtml(formatPercentValue(defectStats.noDefectsPercent))})</div>
+          </div>
+        </div>
+
+        <div class="meta-group">
+          <div class="meta-group-title">Notes</div>
+          <div class="meta-group-grid">
+            <div class="meta-item full"><span class="notes-value">${escapeHtml(p.observacoes || "-")}</span></div>
+          </div>
+        </div>
       </div>
 
       <div class="section-title">Collected Samples</div>
@@ -1398,24 +1440,39 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   currentPage.push("0.12 0.2 0.3 rg");
   pushText(currentPage, "/F2", 12, 50, 765, "Summary", [0.1, 0.16, 0.24]);
 
-  const summary = [
-    ["Date", p.data_analise || "-"],
-    ["Supplier", fornecedorNome || "-"],
-    ["Plot", p.talhao || "-"],
-    ["Variety", p.variedade || "-"],
-    ["Average Weight (g)", Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"],
-    ["Maturity (avg)", Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"],
-    ["Ripeness L1", `${maturityLevels.maturity_level_1 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_1)})`],
-    ["Ripeness L1.5", `${maturityLevels.maturity_level_1_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_1_5)})`],
-    ["Ripeness L2", `${maturityLevels.maturity_level_2 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_2)})`],
-    ["Ripeness L2.5", `${maturityLevels.maturity_level_2_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_2_5)})`],
-    ["Ripeness L3", `${maturityLevels.maturity_level_3 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3)})`],
-    ["Ripeness L3.5", `${maturityLevels.maturity_level_3_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3_5)})`],
-    ["Dry Matter Avg (%)", Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"],
-    ["Fruit Count", String(defectStats.fruitCount)],
-    ["Minor Defects", `${defectStats.minorDefects} (${formatPercentValue(defectStats.minorPercent)})`],
-    ["Critical Defects", `${defectStats.criticalDefects} (${formatPercentValue(defectStats.criticalPercent)})`],
-    ["Without Defects", `${defectStats.noDefects} (${formatPercentValue(defectStats.noDefectsPercent)})`],
+  const summaryGroups = [
+    {
+      title: "General",
+      rows: [
+        ["Date", p.data_analise || "-"],
+        ["Supplier", fornecedorNome || "-"],
+        ["Plot", p.talhao || "-"],
+        ["Variety", p.variedade || "-"],
+        ["Average Weight (g)", Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"],
+        ["Maturity (avg)", Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"],
+        ["Dry Matter Avg (%)", Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"],
+      ],
+    },
+    {
+      title: "Ripeness (maturity)",
+      rows: [
+        ["Level 1", `${maturityLevels.maturity_level_1 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_1)})`],
+        ["Level 1.5", `${maturityLevels.maturity_level_1_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_1_5)})`],
+        ["Level 2", `${maturityLevels.maturity_level_2 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_2)})`],
+        ["Level 2.5", `${maturityLevels.maturity_level_2_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_2_5)})`],
+        ["Level 3", `${maturityLevels.maturity_level_3 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3)})`],
+        ["Level 3.5", `${maturityLevels.maturity_level_3_5 ?? 0} (${formatPercentValue(maturityPercentages.maturity_level_3_5)})`],
+      ],
+    },
+    {
+      title: "Defects",
+      rows: [
+        ["Fruit Count", String(defectStats.fruitCount)],
+        ["Minor Defects", `${defectStats.minorDefects} (${formatPercentValue(defectStats.minorPercent)})`],
+        ["Critical Defects", `${defectStats.criticalDefects} (${formatPercentValue(defectStats.criticalPercent)})`],
+        ["Without Defects", `${defectStats.noDefects} (${formatPercentValue(defectStats.noDefectsPercent)})`],
+      ],
+    },
   ];
 
   const summaryX = 50;
@@ -1425,19 +1482,33 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
   const summaryTableW = summaryLabelW + summaryValueW;
 
   let y = 748;
-  for (const [label, value] of summary) {
-    const rowTop = y;
-    const rowBottom = rowTop - summaryRowH;
+  for (const group of summaryGroups) {
+    const groupTop = y;
+    const groupBottom = groupTop - summaryRowH;
 
+    currentPage.push("0.9 0.95 0.99 rg");
+    currentPage.push(`${summaryX} ${groupBottom} ${summaryTableW} ${summaryRowH} re f`);
     currentPage.push("0.76 0.82 0.9 RG");
     currentPage.push("0.7 w");
-    currentPage.push(`${summaryX} ${rowBottom} ${summaryTableW} ${summaryRowH} re S`);
-    currentPage.push(`${summaryX + summaryLabelW} ${rowTop} m ${summaryX + summaryLabelW} ${rowBottom} l S`);
+    currentPage.push(`${summaryX} ${groupBottom} ${summaryTableW} ${summaryRowH} re S`);
 
-    pushText(currentPage, "/F2", 10, summaryX + 6, rowTop - 13, String(label), [0.1, 0.16, 0.24]);
-    pushText(currentPage, "/F1", 10, summaryX + summaryLabelW + 6, rowTop - 13, String(value), [0.08, 0.12, 0.18]);
-
+    pushText(currentPage, "/F2", 10, summaryX + 6, groupTop - 13, String(group.title), [0.1, 0.16, 0.24]);
     y -= summaryRowH;
+
+    for (const [label, value] of group.rows) {
+      const rowTop = y;
+      const rowBottom = rowTop - summaryRowH;
+
+      currentPage.push("0.76 0.82 0.9 RG");
+      currentPage.push("0.7 w");
+      currentPage.push(`${summaryX} ${rowBottom} ${summaryTableW} ${summaryRowH} re S`);
+      currentPage.push(`${summaryX + summaryLabelW} ${rowTop} m ${summaryX + summaryLabelW} ${rowBottom} l S`);
+
+      pushText(currentPage, "/F2", 10, summaryX + 6, rowTop - 13, String(label), [0.1, 0.16, 0.24]);
+      pushText(currentPage, "/F1", 10, summaryX + summaryLabelW + 6, rowTop - 13, String(value), [0.08, 0.12, 0.18]);
+
+      y -= summaryRowH;
+    }
   }
 
    // Função para calcular largura aproximada do texto em pontos PDF
@@ -1520,38 +1591,57 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     return lines;
   };
 
-  // Escreve o título "Notes:"
-  pushText(currentPage, "/F2", 10, 50, y, "Notes:", [0.1, 0.16, 0.24]);
-  
+  y -= 8;
   const notes = String(p.observacoes || "-");
-  // Largura disponível: página 595pt - margem esquerda 210pt - margem direita 40pt = 345pt
-  const maxWidthPoints = 340;
+  const notesX = 50;
+  const notesW = 505;
+  const notesPadding = 8;
+  const notesTopGap = 6;
+  const notesBottomGap = 12;
+  const maxWidthPoints = notesW - (notesPadding * 2);
   const lineHeight = 14;
   const pageBottomNotes = 70;
-  
-  // Quebra o texto em linhas
   const wrappedLines = wrapTextToWidth(notes, maxWidthPoints, 10);
-  
-  let noteY = y;
-  
-  for (const line of wrappedLines) {
-    // Verifica se precisa de nova página
-    if (noteY - lineHeight < pageBottomNotes) {
+
+  let noteIndex = 0;
+  let notesTitle = "Notes";
+  while (noteIndex < wrappedLines.length) {
+    const titleTop = y;
+    const titleBottom = titleTop - summaryRowH;
+
+    currentPage.push("0.9 0.95 0.99 rg");
+    currentPage.push(`${notesX} ${titleBottom} ${notesW} ${summaryRowH} re f`);
+    currentPage.push("0.76 0.82 0.9 RG");
+    currentPage.push("0.7 w");
+    currentPage.push(`${notesX} ${titleBottom} ${notesW} ${summaryRowH} re S`);
+    pushText(currentPage, "/F2", 10, notesX + 6, titleTop - 13, notesTitle, [0.1, 0.16, 0.24]);
+
+    const boxTop = titleBottom - notesTopGap;
+    const maxLines = Math.max(1, Math.floor((boxTop - pageBottomNotes - notesBottomGap) / lineHeight));
+    const linesToRender = Math.min(maxLines, wrappedLines.length - noteIndex);
+    const boxHeight = (linesToRender * lineHeight) + (notesPadding * 2);
+    const boxBottom = boxTop - boxHeight;
+
+    currentPage.push("0.76 0.82 0.9 RG");
+    currentPage.push("0.7 w");
+    currentPage.push(`${notesX} ${boxBottom} ${notesW} ${boxHeight} re S`);
+
+    let lineY = boxTop - notesPadding - 10;
+    for (let i = 0; i < linesToRender; i += 1) {
+      pushText(currentPage, "/F1", 10, notesX + notesPadding, lineY, wrappedLines[noteIndex + i], [0.08, 0.12, 0.18]);
+      lineY -= lineHeight;
+    }
+
+    noteIndex += linesToRender;
+    y = boxBottom - 16;
+
+    if (noteIndex < wrappedLines.length) {
       currentPage = createPage();
       drawPageHeader(currentPage);
-      noteY = 748;
-      
-      // Adiciona cabeçalho de continuação
-      pushText(currentPage, "/F2", 10, 50, noteY, "Notes (continued):", [0.1, 0.16, 0.24]);
-      noteY -= 20;
+      y = 760;
+      notesTitle = "Notes (continued)";
     }
-    
-    pushText(currentPage, "/F1", 10, 210, noteY, line, [0.08, 0.12, 0.18]);
-    noteY -= lineHeight;
   }
-  
-  // Atualiza Y para continuar o layout do resto do PDF
-  y = noteY;
 
   // Samples table layout and pagination
   // Samples table layout and pagination
