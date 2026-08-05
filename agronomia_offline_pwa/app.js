@@ -412,6 +412,41 @@ function updateMaturityPercentagesUi(maturityData = null) {
   }
 }
 
+function collectDefectDataFromInputs() {
+  const fruitCount = Math.max(0, Number.parseInt(String(getColetaQtdInput()?.value || "0"), 10) || 0);
+  const minorDefects = Math.max(0, Number.parseInt(String(coletaForm?.querySelector("input[name='defeitos_leves']")?.value || "0"), 10) || 0);
+  const criticalDefects = Math.max(0, Number.parseInt(String(coletaForm?.querySelector("input[name='defeitos_criticos']")?.value || "0"), 10) || 0);
+
+  return {
+    fruitCount,
+    minorDefects,
+    criticalDefects,
+  };
+}
+
+function getDefectPercentages(defectData) {
+  const fruitCount = Math.max(0, Number.parseInt(String(defectData?.fruitCount ?? "0"), 10) || 0);
+  const minorDefects = Math.max(0, Number.parseInt(String(defectData?.minorDefects ?? "0"), 10) || 0);
+  const criticalDefects = Math.max(0, Number.parseInt(String(defectData?.criticalDefects ?? "0"), 10) || 0);
+  const toPercent = (count) => (fruitCount > 0 ? (count / fruitCount) * 100 : 0);
+
+  return {
+    fruit_count: fruitCount > 0 ? 100 : 0,
+    minor_defects: toPercent(minorDefects),
+    critical_defects: toPercent(criticalDefects),
+  };
+}
+
+function updateDefectPercentagesUi(defectData = null) {
+  const percentages = getDefectPercentages(defectData || collectDefectDataFromInputs());
+
+  for (const [key, value] of Object.entries(percentages)) {
+    const el = coletaForm?.querySelector(`[data-defect-percent-for='${key}']`);
+    if (!el) continue;
+    el.textContent = formatPercentValue(value);
+  }
+}
+
 function parseMaturityLevelsFromForm() {
   const data = collectMaturityLevelsFromInputs();
   if (data.total <= 0) {
@@ -539,10 +574,16 @@ function updateAmostrasResumoAndMedia() {
   const qtdInput = getColetaQtdInput();
   const maturacaoInput = getColetaMaturacaoInput();
   const maturityData = collectMaturityLevelsFromInputs();
+  const defectData = collectDefectDataFromInputs();
 
   updateMaturityPercentagesUi(maturityData);
 
-  if (qtdInput) qtdInput.value = String(maturityData.total || 0);
+  if (qtdInput) {
+    qtdInput.value = String(maturityData.total || 0);
+    defectData.fruitCount = maturityData.total || 0;
+  }
+  updateDefectPercentagesUi(defectData);
+
   if (maturacaoInput) {
     maturacaoInput.value = maturityData.total > 0 ? maturityData.average.toFixed(2) : "";
   }
@@ -2166,6 +2207,14 @@ async function setupActions() {
       const normalized = Math.max(0, Number.parseInt(String(input.value || "0"), 10) || 0);
       input.value = String(normalized);
       updateAmostrasResumoAndMedia();
+    });
+  }
+
+  for (const input of [...document.querySelectorAll("input[name='defeitos_leves'], input[name='defeitos_criticos']")]) {
+    input.addEventListener("input", () => {
+      const normalized = Math.max(0, Number.parseInt(String(input.value || "0"), 10) || 0);
+      input.value = String(normalized);
+      updateDefectPercentagesUi();
     });
   }
 

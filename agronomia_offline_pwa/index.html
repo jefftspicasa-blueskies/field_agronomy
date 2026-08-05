@@ -169,13 +169,16 @@
           <label>Average fruit weight (Kg)
             <input type="number" name="peso_pu" min="0" step="0.0001" readonly required />
           </label>
-          <label>Fruit count analyzed
+          <label>
+            <span class="maturity-label-row">Fruit count analyzed <small class="maturity-level-pct" data-defect-percent-for="fruit_count">0%</small></span>
             <input type="number" name="numero_frutos_analisados" min="0" step="1" value="0" readonly required />
           </label>
-          <label>Minor defects
+          <label>
+            <span class="maturity-label-row">Minor defects <small class="maturity-level-pct" data-defect-percent-for="minor_defects">0%</small></span>
             <input type="number" name="defeitos_leves" min="0" step="1" value="0" />
           </label>
-          <label>Critical defects
+          <label>
+            <span class="maturity-label-row">Critical defects <small class="maturity-level-pct" data-defect-percent-for="critical_defects">0%</small></span>
             <input type="number" name="defeitos_criticos" min="0" step="1" value="0" />
           </label>
           <div class="full">
