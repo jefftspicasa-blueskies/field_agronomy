@@ -358,6 +358,10 @@ function getColetaMaturacaoInput() {
   return coletaForm?.querySelector("input[name='maturacao']") || null;
 }
 
+function getColetaSemDefeitosInput() {
+  return coletaForm?.querySelector("input[name='sem_defeitos']") || null;
+}
+
 function getMaturityLevelInput(levelKey) {
   return coletaForm?.querySelector(`input[name='${levelKey}']`) || null;
 }
@@ -387,6 +391,12 @@ function formatPercentValue(value) {
   if (!Number.isFinite(n) || n <= 0) return "0%";
   const rounded = Math.round(n * 10) / 10;
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+}
+
+function formatDefectPercentValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "0%";
+  return `${Math.round(n)}%`;
 }
 
 function getMaturityPercentages(levels, total) {
@@ -428,22 +438,30 @@ function getDefectPercentages(defectData) {
   const fruitCount = Math.max(0, Number.parseInt(String(defectData?.fruitCount ?? "0"), 10) || 0);
   const minorDefects = Math.max(0, Number.parseInt(String(defectData?.minorDefects ?? "0"), 10) || 0);
   const criticalDefects = Math.max(0, Number.parseInt(String(defectData?.criticalDefects ?? "0"), 10) || 0);
+  const withoutDefects = Math.max(0, fruitCount - minorDefects - criticalDefects);
   const toPercent = (count) => (fruitCount > 0 ? (count / fruitCount) * 100 : 0);
 
   return {
-    fruit_count: fruitCount > 0 ? 100 : 0,
     minor_defects: toPercent(minorDefects),
     critical_defects: toPercent(criticalDefects),
+    without_defects: toPercent(withoutDefects),
+    without_defects_count: withoutDefects,
   };
 }
 
 function updateDefectPercentagesUi(defectData = null) {
   const percentages = getDefectPercentages(defectData || collectDefectDataFromInputs());
 
+  const withoutDefectsInput = getColetaSemDefeitosInput();
+  if (withoutDefectsInput) {
+    withoutDefectsInput.value = String(percentages.without_defects_count || 0);
+  }
+
   for (const [key, value] of Object.entries(percentages)) {
+    if (key === "without_defects_count") continue;
     const el = coletaForm?.querySelector(`[data-defect-percent-for='${key}']`);
     if (!el) continue;
-    el.textContent = formatPercentValue(value);
+    el.textContent = formatDefectPercentValue(value);
   }
 }
 
@@ -739,6 +757,8 @@ async function coletarImagensColeta(existingImages = []) {
 function resetColetaExtras() {
   const qtdInput = getColetaQtdInput();
   if (qtdInput) qtdInput.value = "0";
+  const semDefeitosInput = getColetaSemDefeitosInput();
+  if (semDefeitosInput) semDefeitosInput.value = "0";
   fillMaturityLevels({});
   state.editAnaliseImagens = [];
   state.amostrasItens = [createEmptyAmostraItem()];
@@ -1969,6 +1989,13 @@ function fillAnaliseForm(rec) {
   coletaForm.querySelector("input[name='materia_seca']").value = p.dry_matter_avg ?? p.materia_seca ?? "";
   coletaForm.querySelector("input[name='defeitos_leves']").value = p.defeitos_leves ?? 0;
   coletaForm.querySelector("input[name='defeitos_criticos']").value = p.defeitos_criticos ?? 0;
+  const semDefeitosInput = getColetaSemDefeitosInput();
+  if (semDefeitosInput) {
+    const fruitCount = Math.max(0, Number.parseInt(String(p.numero_frutos_analisados ?? 0), 10) || 0);
+    const minorDefects = Math.max(0, Number.parseInt(String(p.defeitos_leves ?? 0), 10) || 0);
+    const criticalDefects = Math.max(0, Number.parseInt(String(p.defeitos_criticos ?? 0), 10) || 0);
+    semDefeitosInput.value = String(Math.max(0, fruitCount - minorDefects - criticalDefects));
+  }
   coletaForm.querySelector("textarea[name='observacoes']").value = p.observacoes || "";
   fillMaturityLevels(getMaturityLevelsFromPayload(p));
 
