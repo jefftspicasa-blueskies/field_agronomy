@@ -1093,14 +1093,33 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
       <style>
         body { font-family: Arial, sans-serif; color: #102133; margin: 24px; }
         h1 { margin: 0 0 12px 0; }
-        .meta { margin: 0 0 18px 0; line-height: 1.6; }
-        .meta b { display: inline-block; min-width: 180px; }
+        .meta {
+          margin: 0 0 18px 0;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+        .meta-item {
+          border: 1px solid #cfd8e3;
+          border-radius: 6px;
+          background: #f8fbff;
+          padding: 8px 10px;
+          line-height: 1.4;
+        }
+        .meta-item b {
+          display: block;
+          min-width: 0;
+          margin-bottom: 2px;
+          color: #28435b;
+        }
+        .meta-item.full { grid-column: 1 / -1; }
         table { border-collapse: collapse; width: 100%; margin-top: 12px; }
         th, td { border: 1px solid #cfd8e3; padding: 8px; text-align: left; font-size: 13px; }
         th { background: #eef4fb; }
         .section-title { margin-top: 20px; font-size: 16px; font-weight: 700; }
         .small { color: #4e6478; font-size: 12px; }
         .notes-value { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+        @media (max-width: 720px) { .meta { grid-template-columns: 1fr; } }
         @media print { body { margin: 10mm; } }
       </style>
     </head>
@@ -1108,19 +1127,19 @@ function buildAnaliseReportHtml(rec, fornecedorNome) {
       <h1>Analysis Report</h1>
       <p class="small">Local ID: ${escapeHtml(rec.id_local || "-")}</p>
       <div class="meta">
-        <div><b>Date:</b> ${escapeHtml(p.data_analise || "-")}</div>
-        <div><b>Supplier:</b> ${escapeHtml(fornecedorNome || "-")}</div>
-        <div><b>Plot:</b> ${escapeHtml(p.talhao || "-")}</div>
-        <div><b>Variety:</b> ${escapeHtml(p.variedade || "-")}</div>
-        <div><b>Average Weight (g):</b> ${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
-        <div><b>Maturity:</b> ${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
-        <div><b>Ripeness (maturity):</b> ${escapeHtml(maturityLevels)}</div>
-        <div><b>Dry Matter Avg (%):</b> ${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
-        <div><b>Fruit Count:</b> ${escapeHtml(defectStats.fruitCount)}</div>
-        <div><b>Minor Defects:</b> ${escapeHtml(defectStats.minorDefects)} (${escapeHtml(formatPercentValue(defectStats.minorPercent))})</div>
-        <div><b>Critical Defects:</b> ${escapeHtml(defectStats.criticalDefects)} (${escapeHtml(formatPercentValue(defectStats.criticalPercent))})</div>
-        <div><b>No Defects:</b> ${escapeHtml(defectStats.noDefects)} (${escapeHtml(formatPercentValue(defectStats.noDefectsPercent))})</div>
-        <div><b>Notes:</b> <span class="notes-value">${escapeHtml(p.observacoes || "-")}</span></div>
+        <div class="meta-item"><b>Date</b>${escapeHtml(p.data_analise || "-")}</div>
+        <div class="meta-item"><b>Supplier</b>${escapeHtml(fornecedorNome || "-")}</div>
+        <div class="meta-item"><b>Plot</b>${escapeHtml(p.talhao || "-")}</div>
+        <div class="meta-item"><b>Variety</b>${escapeHtml(p.variedade || "-")}</div>
+        <div class="meta-item"><b>Average Weight (g)</b>${Number.isFinite(Number(p.peso_pu)) ? Number(p.peso_pu).toFixed(4) : "-"}</div>
+        <div class="meta-item"><b>Maturity</b>${Number.isFinite(Number(p.maturity ?? p.maturacao)) ? Number(p.maturity ?? p.maturacao).toFixed(2) : "-"}</div>
+        <div class="meta-item full"><b>Ripeness (maturity)</b>${escapeHtml(maturityLevels)}</div>
+        <div class="meta-item"><b>Dry Matter Avg (%)</b>${Number.isFinite(Number(p.dry_matter_avg ?? p.materia_seca)) ? Number(p.dry_matter_avg ?? p.materia_seca).toFixed(4) : "-"}</div>
+        <div class="meta-item"><b>Fruit Count</b>${escapeHtml(defectStats.fruitCount)}</div>
+        <div class="meta-item"><b>Minor Defects</b>${escapeHtml(defectStats.minorDefects)} (${escapeHtml(formatPercentValue(defectStats.minorPercent))})</div>
+        <div class="meta-item"><b>Critical Defects</b>${escapeHtml(defectStats.criticalDefects)} (${escapeHtml(formatPercentValue(defectStats.criticalPercent))})</div>
+        <div class="meta-item"><b>Without Defects</b>${escapeHtml(defectStats.noDefects)} (${escapeHtml(formatPercentValue(defectStats.noDefectsPercent))})</div>
+        <div class="meta-item full"><b>Notes</b><span class="notes-value">${escapeHtml(p.observacoes || "-")}</span></div>
       </div>
 
       <div class="section-title">Collected Samples</div>
@@ -1396,14 +1415,29 @@ function buildAnaliseReportPdfBytes(rec, fornecedorNome) {
     ["Fruit Count", String(defectStats.fruitCount)],
     ["Minor Defects", `${defectStats.minorDefects} (${formatPercentValue(defectStats.minorPercent)})`],
     ["Critical Defects", `${defectStats.criticalDefects} (${formatPercentValue(defectStats.criticalPercent)})`],
-    ["No Defects", `${defectStats.noDefects} (${formatPercentValue(defectStats.noDefectsPercent)})`],
+    ["Without Defects", `${defectStats.noDefects} (${formatPercentValue(defectStats.noDefectsPercent)})`],
   ];
+
+  const summaryX = 50;
+  const summaryLabelW = 155;
+  const summaryValueW = 350;
+  const summaryRowH = 18;
+  const summaryTableW = summaryLabelW + summaryValueW;
 
   let y = 748;
   for (const [label, value] of summary) {
-    pushText(currentPage, "/F2", 10, 50, y, `${label}:`, [0.1, 0.16, 0.24]);
-    pushText(currentPage, "/F1", 10, 210, y, String(value), [0.08, 0.12, 0.18]);
-    y -= 16;
+    const rowTop = y;
+    const rowBottom = rowTop - summaryRowH;
+
+    currentPage.push("0.76 0.82 0.9 RG");
+    currentPage.push("0.7 w");
+    currentPage.push(`${summaryX} ${rowBottom} ${summaryTableW} ${summaryRowH} re S`);
+    currentPage.push(`${summaryX + summaryLabelW} ${rowTop} m ${summaryX + summaryLabelW} ${rowBottom} l S`);
+
+    pushText(currentPage, "/F2", 10, summaryX + 6, rowTop - 13, String(label), [0.1, 0.16, 0.24]);
+    pushText(currentPage, "/F1", 10, summaryX + summaryLabelW + 6, rowTop - 13, String(value), [0.08, 0.12, 0.18]);
+
+    y -= summaryRowH;
   }
 
    // Função para calcular largura aproximada do texto em pontos PDF
